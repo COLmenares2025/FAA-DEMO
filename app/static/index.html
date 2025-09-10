@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Air Audit • Append-only</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; line-height: 1.35; }
+    h1 { margin: 0 0 16px; }
+    section { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    input, button, select { padding: 8px 10px; font-size: 14px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .muted { color: #6b7280; }
+    .ok { color: #065f46; }
+    .err { color: #991b1b; }
+    pre { white-space: pre-wrap; background: #f9fafb; padding: 10px; border-radius: 8px; }
+    .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+    .small { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>✈️ Air Audit <span class="muted">• Append-only</span></h1>
+
+  <section>
+    <h3>1) Crear avión</h3>
+    <div class="row">
+      <input id="name" placeholder="Nombre (ej. 650-0036)" />
+      <input id="model" placeholder="Modelo (opcional)" />
+      <button onclick="createAircraft()">Crear</button>
+    </div>
+    <div id="aircraftResult" class="small"></div>
+  </section>
+
+  <section>
+    <h3>2) Importar CSV (publicar + cuarentena)</h3>
+    <div class="row">
+      <select id="aircraftSelect"></select>
+      <input id="file" type="file" accept=".csv" />
+      <button onclick="doImport()">Subir e importar</button>
+    </div>
+    <div id="importResult" class="small"></div>
+  </section>
+
+  <section>
+    <h3>3) Publicados</h3>
+    <div class="row">
+      <select id="aircraftSelect2"></select>
+      <button onclick="loadPublished(true)">Cargar</button>
+    </div>
+    <div id="published"></div>
+  </section>
+
+  <section>
+    <h3>4) Cuarentena</h3>
+    <div class="row">
+      <select id="aircraftSelect3"></select>
+      <button onclick="loadQuarantine(true)">Cargar</button>
+    </div>
+    <div id="quarantine"></div>
+  </section>
+
+<script>
+const api = (path, opts={}) => fetch(path, opts).then(r => {
+  if (!r.ok) return r.json().then(j => { throw new Error(j.detail || r.statusText); });
+  return r.json();
+});
+function el(id){ return document.getElementById(id); }
+
+// ---- Global pagination state ----
+let pub = { page: 1, pageSize: 50, total: 0, aircraftId: null };
+let qua = { page: 1, pageSize: 50, total: 0, aircraftId: null };
+
+async function refreshAircrafts() {
+  const list = await api('/aircraft');
+  const sels = [el('aircraftSelect'), el('aircraftSelect2'), el('aircraftSelect3')];
+  sels.forEach(s => s.innerHTML = '');
+  list.forEach(a => { sels.forEach(s => s.add(new Option(`#${a.id} ${a.name} (${a.model})`, a.id))); });
+  if (list.length && pub.aircraftId === null) pub.aircraftId = list[0].id;
+  if (list.length && qua.aircraftId === null) qua.aircraftId = list[0].id;
+}
+
+async function createAircraft() {
+  const fd = new FormData();
+  fd.append('name', el('name').value || '650-0036');
+  fd.append('model', el('model').value || 'N/A');
+  try{
+    const res = await api('/aircraft', { method: 'POST', body: fd });
+    el('aircraftResult').innerHTML = `<span class="ok">Creado:</span> #${res.id} ${res.name} (${res.model})`;
+    await refreshAircrafts();
+  }catch(e){ el('aircraftResult').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
+}
+
+async function doImport() {
+  const a = el('aircraftSelect').value;
+  const f = el('file').files[0];
+  if (!a || !f) { el('importResult').innerHTML = '<span class="err">Selecciona avión y archivo.</span>'; return; }
+  const fd = new FormData();
+  fd.append('file', f);
+  try{
+    const res = await api(`/aircraft/${a}/imports?publish_mode=quarantine`, { method:'POST', body: fd });
+    el('importResult').innerHTML = '<pre>'+JSON.stringify(res, null, 2)+'</pre>';
+    pub.aircraftId = a; qua.aircraftId = a;
+    await loadPublished(true); await loadQuarantine(true);
+  }catch(e){ el('importResult').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
+}
+
+// ---- Published pagination ----
+async function loadPublished(reset=false) {
+  const a = el('aircraftSelect2').value;
+  if (!a) return;
+  if (reset) { pub.page = 1; }
+  pub.aircraftId = a;
+  try{
+    const c = await api(`/aircraft/${a}/items/count`);
+    pub.total = c.count;
+    const offset = (pub.page - 1) * pub.pageSize;
+    const res = await api(`/aircraft/${a}/items?limit=${pub.pageSize}&offset=${offset}`);
+    renderPublished(res);
+  }catch(e){ el('published').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
+}
+function renderPublished(items){
+  const totalPages = Math.max(1, Math.ceil(pub.total / pub.pageSize));
+  const pager = `
+    <div class="row small">
+      <div><b>Publicados:</b> ${pub.total} ítems</div>
+      <div>Página ${pub.page} de ${totalPages}</div>
+      <div>
+        <button onclick="pubPrev()" ${pub.page<=1?'disabled':''}>◀ Anterior</button>
+        <button onclick="pubNext()" ${pub.page>=totalPages?'disabled':''}>Siguiente ▶</button>
+      </div>
+      <div>
+        Tamaño:
+        <select onchange="pubChangePageSize(this.value)">
+          ${[50,100,250,500].map(n => `<option value="${n}" ${n===pub.pageSize?'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+  const grid = '<div class="grid">'+items.map(r => `
+      <div class="card">
+        <div><b>${r.description || '(sin descripción)'}</b></div>
+        <div class="small muted">${r.item_code || ''} • ${r.position || ''} • ${r.type || ''}</div>
+        <div class="small">DueH: ${r.due_next_hours ?? ''} • DueL: ${r.due_next_landings ?? ''} • DueD: ${r.due_next_date ?? ''}</div>
+        <div class="small">Status: ${r.status || ''}</div>
+      </div>`).join('')
+    + '</div>';
+  el('published').innerHTML = pager + grid + pager;
+}
+function pubPrev(){ if (pub.page>1){ pub.page--; loadPublished(); } }
+function pubNext(){ const totalPages = Math.max(1, Math.ceil(pub.total / pub.pageSize)); if (pub.page<totalPages){ pub.page++; loadPublished(); } }
+function pubChangePageSize(v){ pub.pageSize = parseInt(v,10)||50; pub.page=1; loadPublished(); }
+
+// ---- Quarantine pagination ----
+async function loadQuarantine(reset=false) {
+  const a = el('aircraftSelect3').value;
+  if (!a) return;
+  if (reset) { qua.page = 1; }
+  qua.aircraftId = a;
+  try{
+    const c = await api(`/aircraft/${a}/quarantine/count`);
+    qua.total = c.count;
+    const offset = (qua.page - 1) * qua.pageSize;
+    const res = await api(`/aircraft/${a}/quarantine?limit=${qua.pageSize}&offset=${offset}`);
+    renderQuarantine(res);
+  }catch(e){ el('quarantine').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
+}
+function renderQuarantine(items){
+  const totalPages = Math.max(1, Math.ceil(qua.total / qua.pageSize));
+  const pager = `
+    <div class="row small">
+      <div><b>Cuarentena:</b> ${qua.total} ítems</div>
+      <div>Página ${qua.page} de ${totalPages}</div>
+      <div>
+        <button onclick="quaPrev()" ${qua.page<=1?'disabled':''}>◀ Anterior</button>
+        <button onclick="quaNext()" ${qua.page>=totalPages?'disabled':''}>Siguiente ▶</button>
+      </div>
+      <div>
+        Tamaño:
+        <select onchange="quaChangePageSize(this.value)">
+          ${[50,100,250,500].map(n => `<option value="${n}" ${n===qua.pageSize?'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+  const grid = '<div class="grid">'+items.map(r => `
+      <div class="card">
+        <div><b>${r.description || '(sin descripción)'}</b></div>
+        <div class="small muted">${r.item_code || ''} • ${r.position || ''} • ${r.type || ''}</div>
+        <div class="small">Motivo: ${r.reason}</div>
+        <div class="small">Mensaje: ${r.error_message || ''}</div>
+      </div>`).join('')
+    + '</div>';
+  el('quarantine').innerHTML = pager + grid + pager;
+}
+function quaPrev(){ if (qua.page>1){ qua.page--; loadQuarantine(); } }
+function quaNext(){ const totalPages = Math.max(1, Math.ceil(qua.total / qua.pageSize)); if (qua.page<totalPages){ qua.page++; loadQuarantine(); } }
+function quaChangePageSize(v){ qua.pageSize = parseInt(v,10)||50; qua.page=1; loadQuarantine(); }
+
+refreshAircrafts().catch(()=>{});
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Entornos y dependencias
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Entornos/variables
+.env
+.env.*
+
+# Datos locales
+data/
+*.sqlite
+*.db
+*.log
+*.json
+*.csv
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
