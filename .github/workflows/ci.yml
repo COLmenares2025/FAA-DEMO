@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Smoke import modules
+        run: |
+          python - << 'PY'
+          import importlib
+          for m in ["app.main","app.importer","app.schema_sql","app.db","app.utils"]:
+              importlib.import_module(m)
+          print("Modules import OK")
+          PY
+
+      - name: Lint (rápido)
+        run: |
+          python -m pip install ruff
+          ruff check .

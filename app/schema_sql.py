@@ -111,6 +111,16 @@ CREATE TABLE IF NOT EXISTS maintenance_item_quarantine (
     UNIQUE(import_batch_id, source_row_index)
 );
 
+CREATE TABLE IF NOT EXISTS data_ledger (
+    id INTEGER PRIMARY KEY,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    table_name TEXT NOT NULL,
+    action TEXT NOT NULL,      -- INSERT / UPDATE
+    row_id INTEGER,
+    import_batch_id INTEGER,
+    details TEXT
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_item_aircraft ON maintenance_item(aircraft_id);
 CREATE INDEX IF NOT EXISTS idx_item_status ON maintenance_item(status);

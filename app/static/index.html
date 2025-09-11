@@ -3,199 +3,375 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Air Audit • Append-only</title>
+  <title>Air Audit • v1</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; line-height: 1.35; }
-    h1 { margin: 0 0 16px; }
-    section { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-    input, button, select { padding: 8px 10px; font-size: 14px; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .muted { color: #6b7280; }
-    .ok { color: #065f46; }
-    .err { color: #991b1b; }
-    pre { white-space: pre-wrap; background: #f9fafb; padding: 10px; border-radius: 8px; }
-    .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-    .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
-    .small { font-size: 12px; }
+    :root { --bd: #e5e7eb; --muted:#6b7280; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 24px; line-height: 1.35; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-bottom:12px; border-bottom:1px solid var(--bd); margin-bottom:16px; }
+    .brand { font-weight:600; }
+    nav a { margin-right:12px; text-decoration:none; padding:6px 10px; border:1px solid var(--bd); border-radius:8px; color:#111827; }
+    nav a.active { background:#111827; color:white; }
+    nav a.disabled { pointer-events:none; opacity:.5; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    input, button, select { padding:8px 10px; font-size:14px; }
+    section { border: 1px solid var(--bd); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .card { border:1px solid var(--bd); border-radius:10px; padding:12px; }
+    .muted { color: var(--muted); }
+    .small { font-size:12px; }
+    .toolbar { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px; }
+    .list { display:grid; gap:8px; }
+    .item { border:1px solid var(--bd); border-radius:8px; padding:10px; display:flex; justify-content:space-between; align-items:center; }
+    .link { color:#2563eb; cursor:pointer; text-decoration:underline; }
+    .pill { border:1px solid var(--bd); border-radius:999px; padding:2px 8px; font-size:12px; }
+    .warn { color:#b45309; }
+    .ok { color:#065f46; }
+    .err { color:#991b1b; }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
-  <h1>✈️ Air Audit <span class="muted">• Append-only</span></h1>
-
-  <section>
-    <h3>1) Crear avión</h3>
+  <header>
+    <div class="brand">✈️ Air Audit <span class="muted">• v1</span></div>
     <div class="row">
-      <input id="name" placeholder="Nombre (ej. 650-0036)" />
-      <input id="model" placeholder="Modelo (opcional)" />
-      <button onclick="createAircraft()">Crear</button>
-    </div>
-    <div id="aircraftResult" class="small"></div>
-  </section>
-
-  <section>
-    <h3>2) Importar CSV (publicar + cuarentena)</h3>
-    <div class="row">
+      <label for="aircraftSelect">Avión:</label>
       <select id="aircraftSelect"></select>
-      <input id="file" type="file" accept=".csv" />
-      <button onclick="doImport()">Subir e importar</button>
     </div>
-    <div id="importResult" class="small"></div>
+    <nav>
+      <a id="navWelcome" href="#/welcome">Inicio</a>
+      <a id="navItems" href="#/aircraft/0/items" class="disabled">Ítems</a>
+      <a id="navEdit" href="#/aircraft/0/items/new" class="disabled">Editar</a>
+    </nav>
+  </header>
+
+  <!-- Screen: Welcome -->
+  <section id="screenWelcome" class="hidden">
+    <h2>Bienvenido al servicio de auditoría de aviones</h2>
+    <div class="toolbar">
+      <div class="row">
+        <input id="filterAircraft" placeholder="Buscar avión por nombre..." />
+        <button onclick="renderAircraftGrid()">Buscar</button>
+      </div>
+      <div class="row">
+        <input id="newAircraftName" placeholder="Nombre del avión" />
+        <input id="newAircraftModel" placeholder="Modelo (opcional)" />
+        <button onclick="createAircraft()">Agregar avión</button>
+      </div>
+    </div>
+    <div id="aircraftGrid" class="grid"></div>
   </section>
 
-  <section>
-    <h3>3) Publicados</h3>
-    <div class="row">
-      <select id="aircraftSelect2"></select>
-      <button onclick="loadPublished(true)">Cargar</button>
+  <!-- Screen: Items -->
+  <section id="screenItems" class="hidden">
+    <h2>Ítems publicados</h2>
+    <div class="toolbar">
+      <div class="row">
+        <input id="searchItems" placeholder="Buscar por descripción o código..." />
+        <select id="pageSize" onchange="loadItems()">
+          <option>50</option>
+          <option>100</option>
+          <option>250</option>
+          <option>500</option>
+        </select>
+        <button onclick="loadItems()">Buscar</button>
+      </div>
+      <div class="row">
+        <button onclick="goNew()">+ Agregar ítem</button>
+      </div>
     </div>
-    <div id="published"></div>
+    <div class="row">
+      <button onclick="prevPage()">◀ Anterior</button>
+      <div id="pageInfo" class="small muted"></div>
+      <button onclick="nextPage()">Siguiente ▶</button>
+    </div>
+    <div id="itemsList" class="list" style="margin-top:10px;"></div>
   </section>
 
-  <section>
-    <h3>4) Cuarentena</h3>
-    <div class="row">
-      <select id="aircraftSelect3"></select>
-      <button onclick="loadQuarantine(true)">Cargar</button>
+  <!-- Screen: Edit/New -->
+  <section id="screenEdit" class="hidden">
+    <h2 id="editTitle">Editar ítem</h2>
+    <div class="small"><span class="link" onclick="goItems()">← Volver a Ítems</span></div>
+    <div id="warnBox" class="small warn"></div>
+    <div class="grid" style="grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); margin-top:10px;">
+      <div><label>Código</label><br><input id="f_item_code"></div>
+      <div><label>Posición</label><br><input id="f_position"></div>
+      <div><label>Descripción *</label><br><input id="f_description"></div>
+      <div><label>Tipo</label><br><input id="f_type" placeholder="sbsl/comp/ad/insp"></div>
+      <div><label>Interval (months)</label><br><input id="f_interval_months" type="number" min="0"></div>
+      <div><label>Interval (hours)</label><br><input id="f_interval_hours" type="number" min="0"></div>
+      <div><label>Interval (landings)</label><br><input id="f_interval_landings" type="number" min="0"></div>
+      <div><label>Due Next (date)</label><br><input id="f_due_next_date" type="date"></div>
+      <div><label>Due Next (hours)</label><br><input id="f_due_next_hours" type="number" min="0"></div>
+      <div><label>Due Next (landings)</label><br><input id="f_due_next_landings" type="number" min="0"></div>
+      <div><label>Status</label><br><input id="f_status"></div>
+      <div><label>Status Note</label><br><input id="f_status_note"></div>
+      <div><label>Part Number</label><br><input id="f_part_number"></div>
+      <div><label>Part Serial</label><br><input id="f_part_serial"></div>
+      <div><label>Last Completed (date)</label><br><input id="f_last_completed_date" type="date"></div>
+      <div><label>Last Completed (hours)</label><br><input id="f_last_completed_hours" type="number" min="0"></div>
+      <div><label>Last Completed (landings)</label><br><input id="f_last_completed_landings" type="number" min="0"></div>
+      <div><label>Ciudad</label><br><input id="f_last_completed_city"></div>
     </div>
-    <div id="quarantine"></div>
+    <div class="row" style="margin-top:10px;">
+      <button onclick="saveItem()">Guardar</button>
+      <button onclick="goItems()">Cancelar</button>
+    </div>
   </section>
 
 <script>
-const api = (path, opts={}) => fetch(path, opts).then(r => {
-  if (!r.ok) return r.json().then(j => { throw new Error(j.detail || r.statusText); });
+// ---- State ----
+let state = {
+  aircrafts: [],
+  selectedAircraftId: null,
+  items: [],
+  page: 1,
+  pageSize: 50,
+  total: 0,
+  editingItemId: null,
+};
+
+const api = (path, opts={}) => fetch(path, opts).then(async r => {
+  if (!r.ok) {
+    let detail = "";
+    try { const j = await r.json(); detail = j.detail || JSON.stringify(j); } catch(e){ detail = r.statusText; }
+    throw new Error(detail);
+  }
   return r.json();
 });
+
 function el(id){ return document.getElementById(id); }
+function setActive(tab){ ["navWelcome","navItems","navEdit"].forEach(id => el(id).classList.remove("active")); el(tab).classList.add("active"); }
+function show(screenId){ ["screenWelcome","screenItems","screenEdit"].forEach(id => el(id).classList.add("hidden")); el(screenId).classList.remove("hidden"); }
+function getSelectedAircraftId(){ return parseInt(el("aircraftSelect").value || "0"); }
+function setSelectedAircraftId(id){ el("aircraftSelect").value = String(id); localStorage.setItem("aircraftId", String(id)); updateNavLinks(); }
 
-// ---- Global pagination state ----
-let pub = { page: 1, pageSize: 50, total: 0, aircraftId: null };
-let qua = { page: 1, pageSize: 50, total: 0, aircraftId: null };
+// --- Routing (hash) ---
+window.addEventListener("hashchange", router);
+async function router(){
+  const hash = location.hash || "#/welcome";
+  const parts = hash.replace("#","").split("/").filter(Boolean);
+  // parts example: ["aircraft","1","items","123","edit"]
+  if (parts[0] === "welcome") {
+    setActive("navWelcome"); show("screenWelcome");
+    await ensureAircrafts(); renderAircraftGrid();
+    return;
+  }
+  if (parts[0] === "aircraft" && parts[2] === "items") {
+    const aid = parseInt(parts[1] || "0");
+    if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
+    setSelectedAircraftId(aid || state.selectedAircraftId || (state.aircrafts[0]?.id || 0));
+    if (parts.length === 3) {
+      setActive("navItems"); show("screenItems");
+      await loadItems();
+      return;
+    }
+    if (parts.length >= 4 && parts[3] === "new") {
+      setActive("navEdit"); show("screenEdit"); state.editingItemId = null; clearForm(); el("editTitle").innerText = "Nuevo ítem";
+      return;
+    }
+    if (parts.length >= 5 && parts[4] === "edit") {
+      const itemId = parseInt(parts[3] || "0"); state.editingItemId = itemId;
+      setActive("navEdit"); show("screenEdit"); el("editTitle").innerText = "Editar ítem #"+itemId;
+      await loadItem(itemId);
+      return;
+    }
+  }
+  // default
+  location.hash = "#/welcome";
+}
 
-async function refreshAircrafts() {
+// --- Aircrafts ---
+async function ensureAircrafts(){
   const list = await api('/aircraft');
-  const sels = [el('aircraftSelect'), el('aircraftSelect2'), el('aircraftSelect3')];
-  sels.forEach(s => s.innerHTML = '');
-  list.forEach(a => { sels.forEach(s => s.add(new Option(`#${a.id} ${a.name} (${a.model})`, a.id))); });
-  if (list.length && pub.aircraftId === null) pub.aircraftId = list[0].id;
-  if (list.length && qua.aircraftId === null) qua.aircraftId = list[0].id;
+  state.aircrafts = list;
+  const sel = el('aircraftSelect');
+  sel.innerHTML = '';
+  list.forEach(a => sel.add(new Option(`#${a.id} ${a.name} (${a.model})`, a.id)));
+  const saved = parseInt(localStorage.getItem("aircraftId") || "0");
+  const toUse = saved || (list[0]?.id || 0);
+  if (toUse) setSelectedAircraftId(toUse);
+  updateNavLinks();
 }
 
-async function createAircraft() {
-  const fd = new FormData();
-  fd.append('name', el('name').value || '650-0036');
-  fd.append('model', el('model').value || 'N/A');
-  try{
-    const res = await api('/aircraft', { method: 'POST', body: fd });
-    el('aircraftResult').innerHTML = `<span class="ok">Creado:</span> #${res.id} ${res.name} (${res.model})`;
-    await refreshAircrafts();
-  }catch(e){ el('aircraftResult').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
+function updateNavLinks(){
+  const aid = getSelectedAircraftId() || 0;
+  const items = el("navItems");
+  const edit = el("navEdit");
+  if (aid) {
+    items.classList.remove("disabled");
+    edit.classList.remove("disabled");
+    items.href = `#/aircraft/${aid}/items`;
+    edit.href = `#/aircraft/${aid}/items/new`;
+  } else {
+    items.classList.add("disabled");
+    edit.classList.add("disabled");
+    items.href = "#/aircraft/0/items";
+    edit.href = "#/aircraft/0/items/new";
+  }
 }
 
-async function doImport() {
-  const a = el('aircraftSelect').value;
-  const f = el('file').files[0];
-  if (!a || !f) { el('importResult').innerHTML = '<span class="err">Selecciona avión y archivo.</span>'; return; }
-  const fd = new FormData();
-  fd.append('file', f);
-  try{
-    const res = await api(`/aircraft/${a}/imports?publish_mode=quarantine`, { method:'POST', body: fd });
-    el('importResult').innerHTML = '<pre>'+JSON.stringify(res, null, 2)+'</pre>';
-    pub.aircraftId = a; qua.aircraftId = a;
-    await loadPublished(true); await loadQuarantine(true);
-  }catch(e){ el('importResult').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
-}
-
-// ---- Published pagination ----
-async function loadPublished(reset=false) {
-  const a = el('aircraftSelect2').value;
-  if (!a) return;
-  if (reset) { pub.page = 1; }
-  pub.aircraftId = a;
-  try{
-    const c = await api(`/aircraft/${a}/items/count`);
-    pub.total = c.count;
-    const offset = (pub.page - 1) * pub.pageSize;
-    const res = await api(`/aircraft/${a}/items?limit=${pub.pageSize}&offset=${offset}`);
-    renderPublished(res);
-  }catch(e){ el('published').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
-}
-function renderPublished(items){
-  const totalPages = Math.max(1, Math.ceil(pub.total / pub.pageSize));
-  const pager = `
-    <div class="row small">
-      <div><b>Publicados:</b> ${pub.total} ítems</div>
-      <div>Página ${pub.page} de ${totalPages}</div>
-      <div>
-        <button onclick="pubPrev()" ${pub.page<=1?'disabled':''}>◀ Anterior</button>
-        <button onclick="pubNext()" ${pub.page>=totalPages?'disabled':''}>Siguiente ▶</button>
+// welcome
+function renderAircraftGrid(){
+  const q = (el("filterAircraft").value || "").toLowerCase();
+  const cont = el("aircraftGrid");
+  const list = state.aircrafts.filter(a => a.name.toLowerCase().includes(q));
+  if (list.length === 0){
+    cont.innerHTML = '<div class="muted">No hay aviones.</div>'; return;
+  }
+  cont.innerHTML = list.map(a => `
+    <div class="card">
+      <div><b>${a.name}</b> <span class="muted">(${a.model || 'N/A'})</span></div>
+      <div class="small muted">Creado: ${a.created_at}</div>
+      <div style="margin-top:8px;">
+        <span class="link" onclick="goItemsFor(${a.id})">Ver ítems</span>
       </div>
+    </div>
+  `).join("");
+}
+
+async function createAircraft(){
+  const name = el("newAircraftName").value.trim();
+  const model = el("newAircraftModel").value.trim();
+  if (!name){ alert("Nombre requerido"); return; }
+  const fd = new FormData(); fd.append("name", name); fd.append("model", model || "N/A");
+  try{
+    await fetch('/aircraft', { method:'POST', body: fd }).then(r => r.json());
+    el("newAircraftName").value = ""; el("newAircraftModel").value = "";
+    await ensureAircrafts(); renderAircraftGrid();
+  }catch(e){ alert("Error al crear avión: "+e.message); }
+}
+
+// nav helpers
+function goItemsFor(aid){ location.hash = `#/aircraft/${aid}/items`; }
+function goItems(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items`; }
+function goNew(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items/new`; }
+
+// --- Items (list) ---
+async function loadItems(){
+  const aid = getSelectedAircraftId(); if (!aid){ alert("Selecciona un avión"); return; }
+  state.pageSize = parseInt(el("pageSize").value || "50"); 
+  const search = el("searchItems").value || "";
+  const offset = (state.page-1) * state.pageSize;
+  const qs = `?limit=${state.pageSize}&offset=${offset}${search ? "&search="+encodeURIComponent(search):""}`;
+  const [items, count] = await Promise.all([
+    api(`/aircraft/${aid}/items${qs}`),
+    api(`/aircraft/${aid}/items/count${search ? "?search="+encodeURIComponent(search):""}`)
+  ]);
+  state.items = items; state.total = count.count;
+  const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize));
+  el("pageInfo").innerText = `Página ${state.page} de ${totalPages} • Total: ${state.total}`;
+  const list = el("itemsList");
+  if (items.length === 0){
+    list.innerHTML = '<div class="muted">Sin resultados.</div>'; return;
+  }
+  list.innerHTML = items.map(r => `
+    <div class="item">
       <div>
-        Tamaño:
-        <select onchange="pubChangePageSize(this.value)">
-          ${[50,100,250,500].map(n => `<option value="${n}" ${n===pub.pageSize?'selected':''}>${n}</option>`).join('')}
-        </select>
-      </div>
-    </div>`;
-  const grid = '<div class="grid">'+items.map(r => `
-      <div class="card">
-        <div><b>${r.description || '(sin descripción)'}</b></div>
-        <div class="small muted">${r.item_code || ''} • ${r.position || ''} • ${r.type || ''}</div>
+        <div><b>${escapeHtml(r.description || '(sin descripción)')}</b></div>
+        <div class="small muted">${escapeHtml(r.item_code || '')} • ${escapeHtml(r.position || '')} • ${escapeHtml(r.type || '')}</div>
         <div class="small">DueH: ${r.due_next_hours ?? ''} • DueL: ${r.due_next_landings ?? ''} • DueD: ${r.due_next_date ?? ''}</div>
-        <div class="small">Status: ${r.status || ''}</div>
-      </div>`).join('')
-    + '</div>';
-  el('published').innerHTML = pager + grid + pager;
+        <div class="small muted">#${r.id}</div>
+      </div>
+      <div><span class="link" onclick="editItem(${r.id})">✏️ Editar</span></div>
+    </div>
+  `).join("");
 }
-function pubPrev(){ if (pub.page>1){ pub.page--; loadPublished(); } }
-function pubNext(){ const totalPages = Math.max(1, Math.ceil(pub.total / pub.pageSize)); if (pub.page<totalPages){ pub.page++; loadPublished(); } }
-function pubChangePageSize(v){ pub.pageSize = parseInt(v,10)||50; pub.page=1; loadPublished(); }
 
-// ---- Quarantine pagination ----
-async function loadQuarantine(reset=false) {
-  const a = el('aircraftSelect3').value;
-  if (!a) return;
-  if (reset) { qua.page = 1; }
-  qua.aircraftId = a;
+function prevPage(){ if (state.page>1){ state.page--; loadItems(); } }
+function nextPage(){ const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize)); if (state.page<totalPages){ state.page++; loadItems(); } }
+function editItem(id){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items/${id}/edit`; }
+
+// --- Edit/New form ---
+function clearForm(){
+  ["f_item_code","f_position","f_description","f_type","f_interval_months","f_interval_hours","f_interval_landings",
+   "f_due_next_date","f_due_next_hours","f_due_next_landings","f_status","f_status_note","f_part_number","f_part_serial",
+   "f_last_completed_date","f_last_completed_hours","f_last_completed_landings","f_last_completed_city"].forEach(id => el(id).value = "");
+  el("warnBox").innerText = "";
+}
+
+async function loadItem(id){
+  clearForm();
+  const r = await api(`/items/${id}`);
+  setForm(r);
+  // warnings (non-blocking)
+  if (r.due_next_date && r.last_completed_date && r.due_next_date < r.last_completed_date){
+    el("warnBox").innerText = "⚠️ El vencimiento es anterior a la última finalización. Revisa si es correcto.";
+  }
+}
+
+function setForm(r){
+  el("f_item_code").value = r.item_code || "";
+  el("f_position").value = r.position || "";
+  el("f_description").value = r.description || "";
+  el("f_type").value = r.type || "";
+  el("f_interval_months").value = r.interval_months ?? "";
+  el("f_interval_hours").value = r.interval_hours ?? "";
+  el("f_interval_landings").value = r.interval_landings ?? "";
+  el("f_due_next_date").value = r.due_next_date || "";
+  el("f_due_next_hours").value = r.due_next_hours ?? "";
+  el("f_due_next_landings").value = r.due_next_landings ?? "";
+  el("f_status").value = r.status || "";
+  el("f_status_note").value = r.status_note || "";
+  el("f_part_number").value = r.part_number || "";
+  el("f_part_serial").value = r.part_serial || "";
+  el("f_last_completed_date").value = r.last_completed_date || "";
+  el("f_last_completed_hours").value = r.last_completed_hours ?? "";
+  el("f_last_completed_landings").value = r.last_completed_landings ?? "";
+  el("f_last_completed_city").value = r.last_completed_city || "";
+}
+
+function getForm(){
+  const v = (id) => el(id).value.trim();
+  const toInt = (s) => s==="" ? null : parseInt(s,10);
+  const payload = {
+    item_code: v("f_item_code") || null,
+    position: v("f_position") || null,
+    description: v("f_description") || null,
+    type: v("f_type") || null,
+    interval_months: toInt(v("f_interval_months")),
+    interval_hours: toInt(v("f_interval_hours")),
+    interval_landings: toInt(v("f_interval_landings")),
+    due_next_date: v("f_due_next_date") || null,
+    due_next_hours: toInt(v("f_due_next_hours")),
+    due_next_landings: toInt(v("f_due_next_landings")),
+    status: v("f_status") || null,
+    status_note: v("f_status_note") || null,
+    part_number: v("f_part_number") || null,
+    part_serial: v("f_part_serial") || null,
+    last_completed_date: v("f_last_completed_date") || null,
+    last_completed_hours: toInt(v("f_last_completed_hours")),
+    last_completed_landings: toInt(v("f_last_completed_landings")),
+    last_completed_city: v("f_last_completed_city") || null,
+  };
+  return payload;
+}
+
+async function saveItem(){
+  const aid = getSelectedAircraftId();
+  const payload = getForm();
+  if (!payload.description){ alert("La descripción es requerida."); return; }
   try{
-    const c = await api(`/aircraft/${a}/quarantine/count`);
-    qua.total = c.count;
-    const offset = (qua.page - 1) * qua.pageSize;
-    const res = await api(`/aircraft/${a}/quarantine?limit=${qua.pageSize}&offset=${offset}`);
-    renderQuarantine(res);
-  }catch(e){ el('quarantine').innerHTML = '<span class="err">Error: '+e.message+'</span>'; }
+    if (state.editingItemId){
+      await api(`/items/${state.editingItemId}`, { method:'PUT', headers: { "Content-Type":"application/json" }, body: JSON.stringify(payload) });
+      alert("Ítem actualizado.");
+    } else {
+      await api(`/aircraft/${aid}/items`, { method:'POST', headers: { "Content-Type":"application/json" }, body: JSON.stringify(payload) });
+      alert("Ítem creado.");
+    }
+    goItems();
+    await loadItems();
+  }catch(e){ alert("Error al guardar: "+e.message); }
 }
-function renderQuarantine(items){
-  const totalPages = Math.max(1, Math.ceil(qua.total / qua.pageSize));
-  const pager = `
-    <div class="row small">
-      <div><b>Cuarentena:</b> ${qua.total} ítems</div>
-      <div>Página ${qua.page} de ${totalPages}</div>
-      <div>
-        <button onclick="quaPrev()" ${qua.page<=1?'disabled':''}>◀ Anterior</button>
-        <button onclick="quaNext()" ${qua.page>=totalPages?'disabled':''}>Siguiente ▶</button>
-      </div>
-      <div>
-        Tamaño:
-        <select onchange="quaChangePageSize(this.value)">
-          ${[50,100,250,500].map(n => `<option value="${n}" ${n===qua.pageSize?'selected':''}>${n}</option>`).join('')}
-        </select>
-      </div>
-    </div>`;
-  const grid = '<div class="grid">'+items.map(r => `
-      <div class="card">
-        <div><b>${r.description || '(sin descripción)'}</b></div>
-        <div class="small muted">${r.item_code || ''} • ${r.position || ''} • ${r.type || ''}</div>
-        <div class="small">Motivo: ${r.reason}</div>
-        <div class="small">Mensaje: ${r.error_message || ''}</div>
-      </div>`).join('')
-    + '</div>';
-  el('quarantine').innerHTML = pager + grid + pager;
-}
-function quaPrev(){ if (qua.page>1){ qua.page--; loadQuarantine(); } }
-function quaNext(){ const totalPages = Math.max(1, Math.ceil(qua.total / qua.pageSize)); if (qua.page<totalPages){ qua.page++; loadQuarantine(); } }
-function quaChangePageSize(v){ qua.pageSize = parseInt(v,10)||50; qua.page=1; loadQuarantine(); }
 
-refreshAircrafts().catch(()=>{});
+// escape
+function escapeHtml(s){ return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+
+// init
+(async () => {
+  await ensureAircrafts();
+  if (!location.hash) location.hash = "#/welcome";
+  router();
+})();
 </script>
 </body>
 </html>
