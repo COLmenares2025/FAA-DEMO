@@ -51,6 +51,13 @@
       <div class="row">
         <input id="filterAircraft" placeholder="Buscar avión por nombre..." />
         <button onclick="renderAircraftGrid()">Buscar</button>
+        <label class="small" style="margin-left:8px;">
+          <input type="checkbox" id="showArchived" onchange="ensureAircrafts().then(renderAircraftGrid)"> Mostrar archivados
+        </label>
+      </div>
+      <div class="row">
+        <input id="filterAircraft" placeholder="Buscar avión por nombre..." />
+        <button onclick="renderAircraftGrid()">Buscar</button>
       </div>
       <div class="row">
         <input id="newAircraftName" placeholder="Nombre del avión" />
@@ -182,7 +189,8 @@ async function router(){
 
 // --- Aircrafts ---
 async function ensureAircrafts(){
-  const list = await api('/aircraft');
+  const ia = el("showArchived")?.checked ? 1 : 0;
+  const list = await api('/aircraft' + (ia ? '?include_archived=1' : ''));
   state.aircrafts = list;
   const sel = el('aircraftSelect');
   sel.innerHTML = '';
@@ -218,15 +226,23 @@ function renderAircraftGrid(){
   if (list.length === 0){
     cont.innerHTML = '<div class="muted">No hay aviones.</div>'; return;
   }
-  cont.innerHTML = list.map(a => `
+  cont.innerHTML = list.map(a => {
+  const archived = a.is_active === 0;
+  const actions = archived
+    ? `<span class="link" onclick="restoreAircraft(${a.id})">Restaurar</span>`
+    : `<span class="link" onclick="archiveAircraft(${a.id})">Archivar</span>`;
+  return `
     <div class="card">
       <div><b>${a.name}</b> <span class="muted">(${a.model || 'N/A'})</span></div>
       <div class="small muted">Creado: ${a.created_at}</div>
-      <div style="margin-top:8px;">
+      ${archived ? `<div class="small warn">Archivado: ${a.archived_at || ''}</div>` : ''}
+      <div style="margin-top:8px; display:flex; gap:10px;">
         <span class="link" onclick="goItemsFor(${a.id})">Ver ítems</span>
+        ${actions}
       </div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 }
 
 async function createAircraft(){
@@ -239,6 +255,21 @@ async function createAircraft(){
     el("newAircraftName").value = ""; el("newAircraftModel").value = "";
     await ensureAircrafts(); renderAircraftGrid();
   }catch(e){ alert("Error al crear avión: "+e.message); }
+}
+
+async function archiveAircraft(aid){
+  if (!confirm("¿Archivar este avión? Podrás restaurarlo luego.")) return;
+  try{
+    await api(`/aircraft/${aid}/archive`, { method:'POST' });
+    await ensureAircrafts(); renderAircraftGrid();
+  }catch(e){ alert("No se pudo archivar: " + e.message); }
+}
+
+async function restoreAircraft(aid){
+  try{
+    await api(`/aircraft/${aid}/restore`, { method:'POST' });
+    await ensureAircrafts(); renderAircraftGrid();
+  }catch(e){ alert("No se pudo restaurar: " + e.message); }
 }
 
 // nav helpers

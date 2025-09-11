@@ -26,6 +26,15 @@ def startup():
     with connect() as con:
         cur = con.cursor()
         cur.executescript(SCHEMA_SQL)
+        # --- MIGRACIÓN BORRADO LÓGICO (si no existen las columnas) ---
+        cur.execute("PRAGMA table_info(aircraft)")
+        cols = {r[1] for r in cur.fetchall()}
+        if "is_active" not in cols:
+            cur.execute("ALTER TABLE aircraft ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        if "archived_at" not in cols:
+            cur.execute("ALTER TABLE aircraft ADD COLUMN archived_at TEXT")
+        # índice útil
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_aircraft_active ON aircraft(is_active)")
         con.commit()
 
 @app.get("/", response_class=HTMLResponse)
@@ -47,11 +56,57 @@ def create_aircraft(name: str = Form(...), model: str = Form("N/A")):
         con.commit()
         return {"id": cur.lastrowid, "name": name, "model": model}
 
-@app.get("/aircraft")
+"""@app.get("/aircraft")
 def list_aircraft():
     with connect() as con:
         rows = con.execute("SELECT id, name, model, created_at FROM aircraft ORDER BY id DESC").fetchall()
+        return [dict(r) for r in rows]"""
+
+@app.post("/aircraft/{aircraft_id}/archive")
+def archive_aircraft(aircraft_id: int):
+    with connect() as con:
+        cur = con.cursor()
+        r = cur.execute("SELECT id, is_active FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Aircraft no encontrado")
+        if r["is_active"] == 0:
+            return {"id": aircraft_id, "status": "already_archived"}
+        cur.execute(
+            "UPDATE aircraft SET is_active=0, archived_at=datetime('now') WHERE id=?",
+            (aircraft_id,)
+        )
+        con.commit()
+        return {"id": aircraft_id, "status": "archived"}
+
+@app.post("/aircraft/{aircraft_id}/restore")
+def restore_aircraft(aircraft_id: int):
+    with connect() as con:
+        cur = con.cursor()
+        r = cur.execute("SELECT id, is_active FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Aircraft no encontrado")
+        if r["is_active"] == 1:
+            return {"id": aircraft_id, "status": "already_active"}
+        cur.execute(
+            "UPDATE aircraft SET is_active=1, archived_at=NULL WHERE id=?",
+            (aircraft_id,)
+        )
+        con.commit()
+        return {"id": aircraft_id, "status": "restored"}
+
+@app.get("/aircraft")
+def list_aircraft(include_archived: int = 0):
+    with connect() as con:
+        if include_archived:
+            rows = con.execute(
+                "SELECT id, name, model, created_at, is_active, archived_at FROM aircraft ORDER BY id DESC"
+            ).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT id, name, model, created_at, is_active, archived_at FROM aircraft WHERE is_active=1 ORDER BY id DESC"
+            ).fetchall()
         return [dict(r) for r in rows]
+
 
 # ---------------------- Items (published) ----------------------
 @app.get("/aircraft/{aircraft_id}/items")
