@@ -8,6 +8,7 @@ import sqlite3
 from .db import connect, DB_PATH
 from .schema_sql import SCHEMA_SQL
 from .utils import normalize_payload, fingerprint_from_row, diff_rows
+from .importer import import_csv_bytes
 
 app = FastAPI(title="Air Audit (Append-only) — v1 screens")
 
@@ -36,7 +37,11 @@ def index():
 
 # ---------------------- Aircraft ----------------------
 @app.post("/aircraft")
-def create_aircraft(name: str = Form(...), model: str = Form("N/A")):
+async def create_aircraft(
+    name: str = Form(...),
+    model: str = Form("N/A"),
+    csv_file: UploadFile | None = File(None)
+):
     name = name.strip()
     model = (model or "N/A").strip()
     if not name:
@@ -44,8 +49,16 @@ def create_aircraft(name: str = Form(...), model: str = Form("N/A")):
     with connect() as con:
         cur = con.cursor()
         cur.execute("INSERT INTO aircraft(name, model) VALUES (?,?)", (name, model))
+        aircraft_id = cur.lastrowid
+        import_result = None
+        if csv_file is not None:
+            try:
+                content = await csv_file.read()
+                import_result = import_csv_bytes(con, aircraft_id, csv_file.filename, content)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
         con.commit()
-        return {"id": cur.lastrowid, "name": name, "model": model}
+        return {"aircraft": {"id": aircraft_id, "name": name, "model": model}, "import_result": import_result}
 
 @app.get("/aircraft")
 def list_aircraft():
