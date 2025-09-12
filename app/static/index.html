@@ -35,12 +35,12 @@
     <div class="brand">✈️ Air Audit <span class="muted">• v1</span></div>
     <div class="row">
       <label for="aircraftSelect">Avión:</label>
-      <select id="aircraftSelect"></select>
+      <select id="aircraftSelect" onchange="onAircraftChange()"></select>
     </div>
     <nav>
       <a id="navWelcome" href="#/welcome">Inicio</a>
       <a id="navItems" href="#/aircraft/0/items" class="disabled">Ítems</a>
-      <a id="navEdit" href="#/aircraft/0/items/new" class="disabled">Editar</a>
+      <a id="navEdit" href="#" onclick="goNew()">Editar</a>
       <a id="navAudit" href="#/aircraft/0/audit" class="disabled">Historial</a>
     </nav>
   </header>
@@ -143,13 +143,20 @@
   </section>
   <section id="screenAudit" class="hidden">
   <h2>Historial del avión</h2>
-  <div class="row" style="margin-bottom:8px;">
-    <button onclick="prevAuditPage()">◀ Anterior</button>
-    <div id="auditPageInfo" class="small muted"></div>
-    <button onclick="nextAuditPage()">Siguiente ▶</button>
+  <div class="toolbar">
+    <div class="row">
+      <label class="small">
+        <input type="checkbox" id="auditAll" onchange="state.auditPage=1; loadAudit()"> Todos los aviones
+      </label>
+    </div>
+    <div class="row">
+      <button onclick="prevAuditPage()">◀ Anterior</button>
+      <div id="auditPageInfo" class="small muted"></div>
+      <button onclick="nextAuditPage()">Siguiente ▶</button>
+    </div>
   </div>
   <div id="auditList" class="list"></div>
-</section>
+  </section>
 
 <script>
 // ---- State ----
@@ -175,13 +182,14 @@ const api = (path, opts={}) => fetch(path, opts).then(async r => {
 
 function el(id){ return document.getElementById(id); }
 function setActive(tab){ ["navWelcome","navItems","navEdit","navAudit"].forEach(id => el(id).classList.remove("active")); el(tab).classList.add("active"); }
-function show(screenId){ ["screenWelcome","screenItems","screenEdit"].forEach(id => el(id).classList.add("hidden")); el(screenId).classList.remove("hidden"); }
+function show(screenId){ ["screenWelcome","screenItems","screenEdit","screenAudit"].forEach(id => el(id).classList.add("hidden")); el(screenId).classList.remove("hidden"); }
 function getSelectedAircraftId(){ return parseInt(el("aircraftSelect").value || "0"); }
 function setSelectedAircraftId(id){ el("aircraftSelect").value = String(id); localStorage.setItem("aircraftId", String(id)); updateNavLinks(); }
 
 // --- Routing (hash) ---
 window.addEventListener("hashchange", router);
 async function router(){
+  updateNavLinks();
   const hash = location.hash || "#/welcome";
   const parts = hash.replace("#","").split("/").filter(Boolean);
   // parts example: ["aircraft","1","items","123","edit"]
@@ -190,27 +198,48 @@ async function router(){
     await ensureAircrafts(); renderAircraftGrid();
     return;
   }
+  
   if (parts[0] === "aircraft" && parts[2] === "items") {
-    const aid = parseInt(parts[1] || "0");
-    if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
-    setSelectedAircraftId(aid || state.selectedAircraftId || (state.aircrafts[0]?.id || 0));
-    if (parts.length === 3) {
-      setActive("navItems"); show("screenItems");
-      await loadItems();
-      renderImportPanel(); // NUEVO
-      return;
-    }
-    if (parts.length >= 4 && parts[3] === "new") {
-      setActive("navEdit"); show("screenEdit"); state.editingItemId = null; clearForm(); el("editTitle").innerText = "Nuevo ítem";
-      return;
-    }
-    if (parts.length >= 5 && parts[4] === "edit") {
-      const itemId = parseInt(parts[3] || "0"); state.editingItemId = itemId;
-      setActive("navEdit"); show("screenEdit"); el("editTitle").innerText = "Editar ítem #"+itemId;
-      await loadItem(itemId);
-      return;
-    }
+  const aid = parseInt(parts[1] || "0");
+  if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
+  setSelectedAircraftId(aid || state.selectedAircraftId || (state.aircrafts[0]?.id || 0));
+
+  // --- 1) NUEVO: crear ítem ---
+  if (parts.length >= 4 && parts[3] === "new") {
+    setActive("navEdit");
+    show("screenEdit");
+    state.editingItemId = null;
+    clearForm();
+    el("editTitle").innerText = "Nuevo ítem";
+    return;
   }
+
+  // --- 2) NUEVO: editar ítem ---
+  if (parts.length >= 5 && parts[4] === "edit") {
+    const itemId = parseInt(parts[3] || "0");
+    setActive("navEdit");
+    show("screenEdit");
+    state.editingItemId = itemId;
+    el("editTitle").innerText = "Editar ítem #" + itemId;
+    await loadItem(itemId);
+    return;
+  }
+
+  // --- 3) Default: listar ítems ---
+  setActive("navItems");
+  show("screenItems");
+  await loadItems();
+
+  // Abrir panel de import si venimos desde "Importar CSV"
+  if (localStorage.getItem('openImport') === '1') {
+    state.showImportPanel = true;
+    localStorage.removeItem('openImport');
+  }
+  renderImportPanel();
+  return;
+}
+
+
   if (parts[0] === "aircraft" && parts[2] === "audit") {
     const aid = parseInt(parts[1] || "0");
     if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
@@ -260,6 +289,30 @@ function updateNavLinks(){
   }
 }
 
+function onAircraftChange(){
+  const id = getSelectedAircraftId();
+  setSelectedAircraftId(id);   // guarda y refresca enlaces del header
+
+  const parts = (location.hash || "#/welcome").replace("#","").split("/").filter(Boolean);
+
+  if (parts[0] === "aircraft" && parts[2] === "items") {
+    if (parts.length >= 4 && parts[3] === "new") {
+      location.hash = `#/aircraft/${id}/items/new`;
+    } else if (parts.length >= 5 && parts[4] === "edit") {
+      const itemId = parseInt(parts[3] || "0");
+      location.hash = `#/aircraft/${id}/items/${itemId}/edit`;
+    } else {
+      location.hash = `#/aircraft/${id}/items`;
+    }
+  } else if (parts[0] === "aircraft" && parts[2] === "audit") {
+    // Si estás en Historial, que cambie el historial al nuevo avión
+    location.hash = `#/aircraft/${id}/audit`;
+  } else {
+    // En Inicio u otra vista: solo refrescamos enlaces
+    updateNavLinks();
+  }
+}
+
 // welcome
 function renderAircraftGrid(){
   const q = (el("filterAircraft").value || "").toLowerCase();
@@ -269,23 +322,28 @@ function renderAircraftGrid(){
     cont.innerHTML = '<div class="muted">No hay aviones.</div>'; return;
   }
   cont.innerHTML = list.map(a => {
-  const archived = a.is_active === 0;
-  const actions = archived
-    ? `<span class="link" onclick="restoreAircraft(${a.id})">Restaurar</span>`
-    : `<span class="link" onclick="archiveAircraft(${a.id})">Archivar</span>`;
-  return `
-    <div class="card">
-      <div><b>${a.name}</b> <span class="muted">(${a.model || 'N/A'})</span></div>
-      <div class="small muted">Creado: ${a.created_at}</div>
-      ${archived ? `<div class="small warn">Archivado: ${a.archived_at || ''}</div>` : ''}
-      <div style="margin-top:8px; display:flex; gap:10px;">
-        <span class="link" onclick="goItemsFor(${a.id})">Ver ítems</span>
-        <span class="link" onclick="goItemsFor(${a.id}, true)">Importar CSV</span>
+    const archived = a.is_active === 0;
+    const actions = archived
+      ? `<a class="link" href="#/aircraft/${a.id}/items" onclick="event.preventDefault(); restoreAircraft(${a.id})">Restaurar</a>`
+      : `<a class="link" href="#/aircraft/${a.id}/items" onclick="event.preventDefault(); archiveAircraft(${a.id})">Archivar</a>`;
+    return `
+      <div class="card">
+        <div><b>${a.name}</b> <span class="muted">(${a.model || 'N/A'})</span></div>
+        <div class="small muted">Creado: ${a.created_at}</div>
+        ${archived ? `<div class="small warn">Archivado: ${a.archived_at || ''}</div>` : ''}
+        <div style="margin-top:8px; display:flex; gap:14px; flex-wrap:wrap;">
+          <!-- Navegación por hash (sin JS extra) -->
+          <a class="link" href="#/aircraft/${a.id}/items">Ver ítems</a>
+
+          <!-- Para abrir el panel de importación, marcamos un flag y navegamos -->
+          <a class="link" href="#/aircraft/${a.id}/items"
+            onclick="localStorage.setItem('openImport','1')">Importar CSV</a>
+
         ${actions}
       </div>
     </div>
   `;
-  }).join("");
+}).join("");
 }
 
 async function createAircraft(){
@@ -323,7 +381,7 @@ async function restoreAircraft(aid){
 }
 
 // nav helpers
-function goItemsFor(aid){state.showImportPanel = !!openImport; location.hash = `#/aircraft/${aid}/items`; }
+function goItemsFor(aid){location.hash = `#/aircraft/${aid}/items`;}
 function goItems(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items`; }
 function goNew(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items/new`; }
 
@@ -353,7 +411,7 @@ async function loadItems(){
         <div class="small">DueH: ${r.due_next_hours ?? ''} • DueL: ${r.due_next_landings ?? ''} • DueD: ${r.due_next_date ?? ''}</div>
         <div class="small muted">#${r.id}</div>
       </div>
-      <div><span class="link" onclick="editItem(${r.id})">✏️ Editar</span></div>
+      <a class="link" href="#/aircraft/${getSelectedAircraftId()}/items/${r.id}/edit">✏️ Editar</a>
     </div>
   `).join("");
 }
@@ -492,18 +550,25 @@ async function saveItem(){
 }
 
 async function loadAudit(){
-  const aid = getSelectedAircraftId(); if (!aid){ alert("Selecciona un avión"); return; }
+  const aid = getSelectedAircraftId();
   const offset = (state.auditPage - 1) * state.auditPageSize;
   const qs = `?limit=${state.auditPageSize}&offset=${offset}`;
-  const items = await api(`/aircraft/${aid}/audit${qs}`);
-  const list = el("auditList");
-  if (items.length === 0 && state.auditPage > 1){
-     // si no hay más, retrocede una y recarga
-     state.auditPage = Math.max(1, state.auditPage - 1);
-     return loadAudit();
+  const all = el("auditAll")?.checked;
+
+  // Si el toggle "Todos" está activo, llamamos al endpoint global
+  const url = all ? `/audit${qs}` : `/aircraft/${aid}/audit${qs}`;
+
+  try{
+    const items = await api(url);
+    if (items.length === 0 && state.auditPage > 1){
+      state.auditPage = Math.max(1, state.auditPage - 1);
+      return loadAudit();
+    }
+    el("auditPageInfo").innerText = `Página ${state.auditPage}`;
+    el("auditList").innerHTML = items.map(renderAuditItem).join("");
+  }catch(e){
+    el("auditList").innerHTML = `<div class="err small">Error al cargar historial: ${e.message}</div>`;
   }
-  el("auditPageInfo").innerText = `Página ${state.auditPage}`;
-  list.innerHTML = items.map(renderAuditItem).join("");
 }
 
 function prevAuditPage(){ if (state.auditPage > 1){ state.auditPage--; loadAudit(); } }

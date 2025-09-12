@@ -324,6 +324,42 @@ def get_aircraft_audit(aircraft_id: int, limit: int = 50, offset: int = 0):
             out.append(d)
         return out
 
+@app.get("/audit")
+def get_all_audit(limit: int = 50, offset: int = 0):
+    """
+    Devuelve eventos del ledger de TODOS los aviones.
+    Incluye aircraft_id en la salida para identificar cada evento.
+    """
+    with connect() as con:
+        cur = con.cursor()
+        q = """
+        SELECT
+          l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id,
+          COALESCE(mi.aircraft_id, b.aircraft_id,
+                   CASE WHEN l.table_name='aircraft' THEN l.row_id END) AS aircraft_id,
+          l.details
+        FROM data_ledger l
+        LEFT JOIN maintenance_item mi
+          ON l.table_name='maintenance_item' AND mi.id = l.row_id
+        LEFT JOIN import_batch b
+          ON l.table_name='import_batch' AND b.id = l.row_id
+        ORDER BY ts DESC, id DESC
+        LIMIT :limit OFFSET :offset
+        """
+        rows = cur.execute(q, {"limit": limit, "offset": offset}).fetchall()
+
+        import json
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["details"] = json.loads(d["details"]) if d["details"] else {}
+            except Exception:
+                d["details"] = {"raw": d["details"]}
+            out.append(d)
+        return out
+
+
 @app.post("/aircraft/{aircraft_id}/imports")
 async def upload_import(aircraft_id: int, publish_mode: str = "quarantine", file: UploadFile = File(...)):
     content = await file.read()
