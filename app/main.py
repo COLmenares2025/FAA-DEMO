@@ -4,6 +4,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
+from .importer import import_csv_bytes
 
 from .db import connect, DB_PATH
 from .schema_sql import SCHEMA_SQL
@@ -53,8 +54,20 @@ def create_aircraft(name: str = Form(...), model: str = Form("N/A")):
     with connect() as con:
         cur = con.cursor()
         cur.execute("INSERT INTO aircraft(name, model) VALUES (?,?)", (name, model))
+        aircraft_id = cur.lastrowid
+        # Ledger: creación de avión
+        details = {
+            "action": "CREATE",
+            "table": "aircraft",
+            "aircraft_id": aircraft_id,
+            "values": {"name": name, "model": model}
+        }
+        cur.execute(
+            "INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
+            ("aircraft", "CREATE", aircraft_id, None, json_dumps(details))
+        )
         con.commit()
-        return {"id": cur.lastrowid, "name": name, "model": model}
+        return {"id": aircraft_id, "name": name, "model": model}
 
 """@app.get("/aircraft")
 def list_aircraft():
@@ -66,14 +79,28 @@ def list_aircraft():
 def archive_aircraft(aircraft_id: int):
     with connect() as con:
         cur = con.cursor()
-        r = cur.execute("SELECT id, is_active FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        r = cur.execute("SELECT id, name, model, is_active, archived_at FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
         if not r:
             raise HTTPException(status_code=404, detail="Aircraft no encontrado")
         if r["is_active"] == 0:
             return {"id": aircraft_id, "status": "already_archived"}
+        before = {"is_active": r["is_active"], "archived_at": r["archived_at"]}
+        cur.execute("UPDATE aircraft SET is_active=0, archived_at=datetime('now') WHERE id=?", (aircraft_id,))
+        after_row = cur.execute("SELECT is_active, archived_at FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        after = {"is_active": after_row["is_active"], "archived_at": after_row["archived_at"]}
+        # Ledger
+        details = {
+            "action": "ARCHIVE",
+            "table": "aircraft",
+            "aircraft_id": aircraft_id,
+            "name": r["name"],
+            "model": r["model"],
+            "before": before,
+            "after": after
+        }
         cur.execute(
-            "UPDATE aircraft SET is_active=0, archived_at=datetime('now') WHERE id=?",
-            (aircraft_id,)
+            "INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
+            ("aircraft", "ARCHIVE", aircraft_id, None, json_dumps(details))
         )
         con.commit()
         return {"id": aircraft_id, "status": "archived"}
@@ -82,14 +109,28 @@ def archive_aircraft(aircraft_id: int):
 def restore_aircraft(aircraft_id: int):
     with connect() as con:
         cur = con.cursor()
-        r = cur.execute("SELECT id, is_active FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        r = cur.execute("SELECT id, name, model, is_active, archived_at FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
         if not r:
             raise HTTPException(status_code=404, detail="Aircraft no encontrado")
         if r["is_active"] == 1:
             return {"id": aircraft_id, "status": "already_active"}
+        before = {"is_active": r["is_active"], "archived_at": r["archived_at"]}
+        cur.execute("UPDATE aircraft SET is_active=1, archived_at=NULL WHERE id=?", (aircraft_id,))
+        after_row = cur.execute("SELECT is_active, archived_at FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        after = {"is_active": after_row["is_active"], "archived_at": after_row["archived_at"]}
+        # Ledger
+        details = {
+            "action": "RESTORE",
+            "table": "aircraft",
+            "aircraft_id": aircraft_id,
+            "name": r["name"],
+            "model": r["model"],
+            "before": before,
+            "after": after
+        }
         cur.execute(
-            "UPDATE aircraft SET is_active=1, archived_at=NULL WHERE id=?",
-            (aircraft_id,)
+            "INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
+            ("aircraft", "RESTORE", aircraft_id, None, json_dumps(details))
         )
         con.commit()
         return {"id": aircraft_id, "status": "restored"}
@@ -236,3 +277,71 @@ def create_item(aircraft_id: int, payload: Dict[str, Any]):
                     ("maintenance_item","INSERT", cur.lastrowid, batch_id, json_dumps(details)))
         con.commit()
         return {"id": cur.lastrowid, "import_batch_id": batch_id}
+
+@app.get("/aircraft/{aircraft_id}/audit")
+def get_aircraft_audit(aircraft_id: int, limit: int = 50, offset: int = 0):
+    """
+    Devuelve eventos del ledger relacionados al avión:
+      - Eventos directos de 'aircraft' (CREATE/ARCHIVE/RESTORE)
+      - Eventos de 'maintenance_item' asociados a este aircraft (INSERT/UPDATE)
+      - (Opcional) Eventos de 'import_batch' del aircraft (UPDATE de estado)
+    """
+    with connect() as con:
+        cur = con.cursor()
+        q = """
+        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.details
+        FROM data_ledger l
+        WHERE l.table_name = 'aircraft' AND l.row_id = :aid
+
+        UNION ALL
+
+        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.details
+        FROM data_ledger l
+        JOIN maintenance_item mi ON mi.id = l.row_id
+        WHERE l.table_name = 'maintenance_item' AND mi.aircraft_id = :aid
+
+        UNION ALL
+
+        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.details
+        FROM data_ledger l
+        JOIN import_batch b ON b.id = l.row_id
+        WHERE l.table_name = 'import_batch' AND b.aircraft_id = :aid
+
+        ORDER BY ts DESC, id DESC
+        LIMIT :limit OFFSET :offset
+        """
+        rows = cur.execute(q, {"aid": aircraft_id, "limit": limit, "offset": offset}).fetchall()
+
+        # Intentar parsear details a JSON para comodidad del front
+        import json
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["details"] = json.loads(d["details"]) if d["details"] else {}
+            except Exception:
+                d["details"] = {"raw": d["details"]}
+            out.append(d)
+        return out
+
+@app.post("/aircraft/{aircraft_id}/imports")
+async def upload_import(aircraft_id: int, publish_mode: str = "quarantine", file: UploadFile = File(...)):
+    content = await file.read()
+    with connect() as con:
+        # verificar que el avión existe
+        r = con.execute("SELECT id FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Aircraft no encontrado")
+        try:
+            result = import_csv_bytes(con, aircraft_id, file.filename, content, publish_mode=publish_mode)
+            con.commit()
+            return result
+        except sqlite3.IntegrityError as e:
+            con.rollback()
+            # mismo archivo importado antes para ese avión
+            if "UNIQUE(file_sha256, aircraft_id)" in str(e):
+                raise HTTPException(status_code=409, detail="Ese archivo ya fue importado para este avión.")
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            con.rollback()
+            raise HTTPException(status_code=400, detail=str(e))

@@ -41,6 +41,7 @@
       <a id="navWelcome" href="#/welcome">Inicio</a>
       <a id="navItems" href="#/aircraft/0/items" class="disabled">Ítems</a>
       <a id="navEdit" href="#/aircraft/0/items/new" class="disabled">Editar</a>
+      <a id="navAudit" href="#/aircraft/0/audit" class="disabled">Historial</a>
     </nav>
   </header>
 
@@ -83,8 +84,24 @@
         <button onclick="loadItems()">Buscar</button>
       </div>
       <div class="row">
+        <button onclick="toggleImport()">Importar CSV</button>  <!-- NUEVO -->
         <button onclick="goNew()">+ Agregar ítem</button>
       </div>
+    </div>
+    <div id="importPanel" class="hidden" style="border:1px solid var(--bd); border-radius:8px; padding:12px; margin-top:8px;">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div class="small"><b>Importar desde CSV</b> (los válidos se publican; duplicados a cuarentena)</div>
+        <div><span class="link" onclick="toggleImport()">Cerrar ✕</span></div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <input id="csvFile" type="file" accept=".csv,text/csv" />
+        <select id="publishMode">
+          <option value="quarantine">Publicar + Cuarentena (recomendado)</option>
+          <option value="strict">Estricta (falla si hay errores)</option>
+        </select>
+        <button onclick="importCSV()">Subir</button>
+      </div>
+      <pre id="importResult" class="small" style="background:#f9fafb; border:1px solid var(--bd); border-radius:8px; padding:8px; margin-top:8px;"></pre>
     </div>
     <div class="row">
       <button onclick="prevPage()">◀ Anterior</button>
@@ -124,6 +141,15 @@
       <button onclick="goItems()">Cancelar</button>
     </div>
   </section>
+  <section id="screenAudit" class="hidden">
+  <h2>Historial del avión</h2>
+  <div class="row" style="margin-bottom:8px;">
+    <button onclick="prevAuditPage()">◀ Anterior</button>
+    <div id="auditPageInfo" class="small muted"></div>
+    <button onclick="nextAuditPage()">Siguiente ▶</button>
+  </div>
+  <div id="auditList" class="list"></div>
+</section>
 
 <script>
 // ---- State ----
@@ -135,6 +161,7 @@ let state = {
   pageSize: 50,
   total: 0,
   editingItemId: null,
+  showImportPanel: false,
 };
 
 const api = (path, opts={}) => fetch(path, opts).then(async r => {
@@ -147,7 +174,7 @@ const api = (path, opts={}) => fetch(path, opts).then(async r => {
 });
 
 function el(id){ return document.getElementById(id); }
-function setActive(tab){ ["navWelcome","navItems","navEdit"].forEach(id => el(id).classList.remove("active")); el(tab).classList.add("active"); }
+function setActive(tab){ ["navWelcome","navItems","navEdit","navAudit"].forEach(id => el(id).classList.remove("active")); el(tab).classList.add("active"); }
 function show(screenId){ ["screenWelcome","screenItems","screenEdit"].forEach(id => el(id).classList.add("hidden")); el(screenId).classList.remove("hidden"); }
 function getSelectedAircraftId(){ return parseInt(el("aircraftSelect").value || "0"); }
 function setSelectedAircraftId(id){ el("aircraftSelect").value = String(id); localStorage.setItem("aircraftId", String(id)); updateNavLinks(); }
@@ -170,6 +197,7 @@ async function router(){
     if (parts.length === 3) {
       setActive("navItems"); show("screenItems");
       await loadItems();
+      renderImportPanel(); // NUEVO
       return;
     }
     if (parts.length >= 4 && parts[3] === "new") {
@@ -182,6 +210,15 @@ async function router(){
       await loadItem(itemId);
       return;
     }
+  }
+  if (parts[0] === "aircraft" && parts[2] === "audit") {
+    const aid = parseInt(parts[1] || "0");
+    if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
+    setSelectedAircraftId(aid || state.selectedAircraftId || (state.aircrafts[0]?.id || 0));
+    setActive("navAudit"); show("screenAudit");
+    state.auditPage = state.auditPage || 1;
+    await loadAudit();
+    return;
   }
   // default
   location.hash = "#/welcome";
@@ -204,17 +241,22 @@ async function ensureAircrafts(){
 function updateNavLinks(){
   const aid = getSelectedAircraftId() || 0;
   const items = el("navItems");
-  const edit = el("navEdit");
+  const edit  = el("navEdit");
+  const audit = el("navAudit");  // NUEVO
   if (aid) {
     items.classList.remove("disabled");
     edit.classList.remove("disabled");
+    audit.classList.remove("disabled");                   // NUEVO
     items.href = `#/aircraft/${aid}/items`;
-    edit.href = `#/aircraft/${aid}/items/new`;
+    edit.href  = `#/aircraft/${aid}/items/new`;
+    audit.href = `#/aircraft/${aid}/audit`;               // NUEVO
   } else {
     items.classList.add("disabled");
     edit.classList.add("disabled");
+    audit.classList.add("disabled");                      // NUEVO
     items.href = "#/aircraft/0/items";
-    edit.href = "#/aircraft/0/items/new";
+    edit.href  = "#/aircraft/0/items/new";
+    audit.href = "#/aircraft/0/audit";                    // NUEVO
   }
 }
 
@@ -238,6 +280,7 @@ function renderAircraftGrid(){
       ${archived ? `<div class="small warn">Archivado: ${a.archived_at || ''}</div>` : ''}
       <div style="margin-top:8px; display:flex; gap:10px;">
         <span class="link" onclick="goItemsFor(${a.id})">Ver ítems</span>
+        <span class="link" onclick="goItemsFor(${a.id}, true)">Importar CSV</span>
         ${actions}
       </div>
     </div>
@@ -249,11 +292,18 @@ async function createAircraft(){
   const name = el("newAircraftName").value.trim();
   const model = el("newAircraftModel").value.trim();
   if (!name){ alert("Nombre requerido"); return; }
-  const fd = new FormData(); fd.append("name", name); fd.append("model", model || "N/A");
+  const fd = new FormData(); fd.append('name', name); fd.append('model', model || 'N/A');
   try{
-    await fetch('/aircraft', { method:'POST', body: fd }).then(r => r.json());
-    el("newAircraftName").value = ""; el("newAircraftModel").value = "";
+    const res = await api('/aircraft', { method: 'POST', body: fd });
+    el('newAircraftName').value = ""; el('newAircraftModel').value = "";
     await ensureAircrafts(); renderAircraftGrid();
+    // Preguntar si importar ahora
+    const importar = confirm("Avión creado (#"+res.id+"). ¿Quieres importar un CSV ahora?");
+    if (importar){
+      setSelectedAircraftId(res.id);
+      state.showImportPanel = true;  // abrir panel
+      location.hash = `#/aircraft/${res.id}/items`;
+    }
   }catch(e){ alert("Error al crear avión: "+e.message); }
 }
 
@@ -273,7 +323,7 @@ async function restoreAircraft(aid){
 }
 
 // nav helpers
-function goItemsFor(aid){ location.hash = `#/aircraft/${aid}/items`; }
+function goItemsFor(aid){state.showImportPanel = !!openImport; location.hash = `#/aircraft/${aid}/items`; }
 function goItems(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items`; }
 function goNew(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items/new`; }
 
@@ -311,6 +361,53 @@ async function loadItems(){
 function prevPage(){ if (state.page>1){ state.page--; loadItems(); } }
 function nextPage(){ const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize)); if (state.page<totalPages){ state.page++; loadItems(); } }
 function editItem(id){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items/${id}/edit`; }
+
+// --- Import CSV ---
+function renderImportPanel(){
+  const panel = el("importPanel");
+  if (!panel) return;
+  panel.classList.toggle("hidden", !state.showImportPanel);
+  if (!state.showImportPanel) {
+    el("csvFile").value = "";
+    el("importResult").textContent = "";
+  }
+}
+function toggleImport(){
+  state.showImportPanel = !state.showImportPanel;
+  renderImportPanel();
+}
+async function importCSV(){
+  const aid = getSelectedAircraftId();
+  const f = el("csvFile").files[0];
+  const mode = el("publishMode").value || "quarantine";
+  if (!aid){ alert("Selecciona un avión"); return; }
+  if (!f){ alert("Selecciona un archivo CSV"); return; }
+  const fd = new FormData();
+  fd.append("file", f); // la API espera el campo 'file'
+  el("importResult").textContent = "Subiendo y procesando...";
+  try{
+    const res = await api(`/aircraft/${aid}/imports?publish_mode=${encodeURIComponent(mode)}`, {
+      method: 'POST',
+      body: fd
+    });
+    // Resumen amigable
+    const summary = [
+      `Lote #${res.import_batch_id || 'N/A'}`,
+      `Estado: ${res.status}`,
+      `Total filas: ${res.total_rows}`,
+      `Insertados: ${res.inserted_rows}`,
+      `Cuarentena: ${res.quarantined || 0}`,
+      `Errores: ${res.errors}`
+    ].join('\n');
+    el("importResult").textContent = summary;
+    // refrescar items publicados
+    await loadItems();
+  }catch(e){
+    // Errores típicos: 409 si el mismo archivo ya fue importado para ese avión
+    el("importResult").textContent = "Error: " + e.message;
+  }
+}
+
 
 // --- Edit/New form ---
 function clearForm(){
@@ -392,6 +489,77 @@ async function saveItem(){
     goItems();
     await loadItems();
   }catch(e){ alert("Error al guardar: "+e.message); }
+}
+
+async function loadAudit(){
+  const aid = getSelectedAircraftId(); if (!aid){ alert("Selecciona un avión"); return; }
+  const offset = (state.auditPage - 1) * state.auditPageSize;
+  const qs = `?limit=${state.auditPageSize}&offset=${offset}`;
+  const items = await api(`/aircraft/${aid}/audit${qs}`);
+  const list = el("auditList");
+  if (items.length === 0 && state.auditPage > 1){
+     // si no hay más, retrocede una y recarga
+     state.auditPage = Math.max(1, state.auditPage - 1);
+     return loadAudit();
+  }
+  el("auditPageInfo").innerText = `Página ${state.auditPage}`;
+  list.innerHTML = items.map(renderAuditItem).join("");
+}
+
+function prevAuditPage(){ if (state.auditPage > 1){ state.auditPage--; loadAudit(); } }
+function nextAuditPage(){ state.auditPage++; loadAudit(); }
+
+function renderAuditItem(ev){
+  const ts   = ev.ts;
+  const tbl  = ev.table_name;
+  const act  = ev.action;
+  const rid  = ev.row_id;
+  const det  = ev.details || {};
+  let summary = "";
+
+  if (tbl === "aircraft"){
+    if (act === "CREATE"){
+      summary = `✈️ Creado avión "${escapeHtml(det?.values?.name || '')}" (${escapeHtml(det?.values?.model || '')})`;
+    } else if (act === "ARCHIVE"){
+      summary = `📦 Archivado avión "${escapeHtml(det?.name || '')}"`;
+    } else if (act === "RESTORE"){
+      summary = `♻️ Restaurado avión "${escapeHtml(det?.name || '')}"`;
+    } else {
+      summary = `✈️ Evento de avión (${act})`;
+    }
+  } else if (tbl === "maintenance_item"){
+    if (act === "INSERT"){
+      summary = `➕ Ítem creado (id=${rid})`;
+    } else if (act === "UPDATE"){
+      const fields = det?.diff ? Object.keys(det.diff) : [];
+      summary = `✏️ Ítem actualizado (id=${rid}) — campos: ${fields.join(", ")}`;
+    } else {
+      summary = `Ítem evento (${act}) (id=${rid})`;
+    }
+  } else if (tbl === "import_batch"){
+    summary = `📥 Lote ${rid} — acción: ${act}`;
+  } else {
+    summary = `${tbl} — ${act}`;
+  }
+
+  // Mostrar diff si existe
+  let diffHtml = "";
+  if (det && det.diff){
+    const rows = Object.entries(det.diff).map(([k,v]) =>
+      `<div class="small"><b>${escapeHtml(k)}</b>: ${escapeHtml(String(v.from))} → ${escapeHtml(String(v.to))}</div>`
+    ).join("");
+    diffHtml = rows ? `<div style="margin-top:6px;">${rows}</div>` : "";
+  }
+
+  return `
+    <div class="item">
+      <div>
+        <div class="small muted">${ts}</div>
+        <div><b>${summary}</b></div>
+        ${diffHtml}
+      </div>
+    </div>
+  `;
 }
 
 // escape

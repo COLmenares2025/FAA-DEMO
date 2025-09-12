@@ -1,83 +1,71 @@
 import io, re, sqlite3
-from typing import List, Dict, Any, Tuple
 import pandas as pd
 
+ALLOWED_TYPES = {"sbsl","comp","ad","insp"}
+
+EXPECTED_COLS = [
+    'Item Code','Position','Description','Type','Interval Months','Interval Hours',
+    'Interval Landings','Adjusted Interval','Part Number','Part Serial','Last Completed Date',
+    'Last Completed Hours','Last Completed Landings','Last Completed City','Due Next Date',
+    'Due Next Hours','Due Next Landings','Time Remaining','Hours Remaining','Landings Remaining',
+    'Status','Status Note'
+]
+
 def strip_or_none(x):
-    if pd.isna(x): 
-        return None
+    if pd.isna(x): return None
     s = str(x).strip().replace("\t","")
-    return s if s != "" else None
+    return s if s else None
 
 def to_int_or_none(x):
-    if pd.isna(x) or x == "": 
-        return None
+    if pd.isna(x) or x=="": return None
     try:
-        if isinstance(x, str):
-            x = x.replace(",", "")
+        if isinstance(x,str): x = x.replace(",","")
         return int(float(x))
-    except Exception:
-        return None
+    except: return None
 
 def parse_hours_remaining(x):
-    if x is None: 
-        return None
-    s = str(x).lower().replace(",", "").strip()
-    m = re.search(r"(-?\d+)", s)
+    if x is None: return None
+    import re
+    m = re.search(r"(-?\d+)", str(x).lower().replace(",",""))
     return int(m.group(1)) if m else None
 
 def parse_landings_remaining(x):
-    if x is None:
-        return None
-    s = str(x).lower().replace(",", "").strip()
-    m = re.search(r"(-?\d+)", s)
+    if x is None: return None
+    import re
+    m = re.search(r"(-?\d+)", str(x).lower().replace(",",""))
     return int(m.group(1)) if m else None
 
 def parse_adjusted_interval(x):
-    if x is None:
-        return (None, None, None)
-    s = str(x).lower().replace(",", "").strip()
+    if x is None: return (None,None,None)
+    s = str(x).lower().replace(",","").strip()
     m = re.match(r"(\d+)\s*(hrs|hr|ldgs|ldg|c)?\s*\(\s*([-+]?\d+)\s*\)", s)
-    if not m:
-        return (None, None, None)
-    val = int(m.group(1))
-    unit = m.group(2) or None
-    delta = int(m.group(3))
-    if unit in ("hr","hrs"):
-        unit = "hrs"
-    elif unit in ("ldg","ldgs","c"):
-        unit = "ldgs"
+    if not m: return (None,None,None)
+    val = int(m.group(1)); unit = m.group(2) or None; delta = int(m.group(3))
+    if unit in ("hr","hrs"): unit="hrs"
+    elif unit in ("ldg","ldgs","c"): unit="ldgs"
     return (val, unit, delta)
 
-def parse_time_remaining(x):
-    if x is None:
-        return (None, None, None)
-    s = str(x).lower().strip()
-    months = None
-    days = None
-    overdue = None
-    try:
-        m = re.search(r"(-?\d+)\s*m", s)
-        if m:
-            months = int(m.group(1))
-        d = re.search(r"(-?\d+)\s*d", s)
-        if d:
-            days = int(d.group(1))
-        overdue = True if (isinstance(months,int) and months < 0) or (isinstance(days,int) and days < 0) else False
-    except Exception:
-        months, days, overdue = (None, None, None)
-    return (months, days, overdue)
-
 def to_date_or_none(x):
-    if pd.isna(x) or x is None or str(x).strip() == "":
-        return None
+    if pd.isna(x) or x is None or str(x).strip() == "": return None
     try:
         return pd.to_datetime(x, errors="coerce").date().isoformat()
-    except Exception:
-        return None
+    except: return None
+
+def parse_time_remaining(x):
+    if x is None: return (None,None,None)
+    s = str(x).lower().strip()
+    import re
+    months = days = None
+    m = re.search(r"(-?\d+)\s*m", s)
+    d = re.search(r"(-?\d+)\s*d", s)
+    if m: months = int(m.group(1))
+    if d: days = int(d.group(1))
+    overdue = (months is not None and months<0) or (days is not None and days<0)
+    return (months, days, overdue)
 
 def fingerprint_row(row: dict) -> str:
     import hashlib
-    key_fields = [
+    parts = [
         row.get("item_code") or "",
         row.get("position") or "",
         row.get("description") or "",
@@ -88,17 +76,7 @@ def fingerprint_row(row: dict) -> str:
         str(row.get("interval_hours") or ""),
         str(row.get("interval_landings") or ""),
     ]
-    return hashlib.sha1(("||".join(key_fields)).encode("utf-8")).hexdigest()
-
-EXPECTED_COLS = [
-    'Item Code','Position','Description','Type','Interval Months','Interval Hours',
-    'Interval Landings','Adjusted Interval','Part Number','Part Serial','Last Completed Date',
-    'Last Completed Hours','Last Completed Landings','Last Completed City','Due Next Date',
-    'Due Next Hours','Due Next Landings','Time Remaining','Hours Remaining','Landings Remaining',
-    'Status','Status Note'
-]
-
-ALLOWED_TYPES = {"sbsl","comp","ad","insp"}
+    return hashlib.sha1(("||".join(parts)).encode("utf-8")).hexdigest()
 
 def sanitize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     san = pd.DataFrame()
@@ -106,6 +84,7 @@ def sanitize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     san["position"] = df["Position"].map(strip_or_none)
     san["description"] = df["Description"].map(strip_or_none)
     san["type"] = df["Type"].map(lambda x: strip_or_none(x.lower() if not pd.isna(x) else x))
+
     san["interval_months"] = df["Interval Months"].map(to_int_or_none)
     san["interval_hours"]  = df["Interval Hours"].map(to_int_or_none)
     san["interval_landings"] = df["Interval Landings"].map(to_int_or_none)
@@ -131,7 +110,7 @@ def sanitize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     tm = san["time_remaining_text"].map(parse_time_remaining)
     san["months_remaining"] = [t[0] for t in tm]
     san["days_remaining"]   = [t[1] for t in tm]
-    san["is_overdue_time"]  = [t[2] for t in tm]
+    san["is_overdue_time"]  = [int(t[2]) if isinstance(t[2], bool) else (1 if t[2] else 0) if t[2] is not None else None for t in tm]
 
     san["hours_remaining"]    = df["Hours Remaining"].map(strip_or_none).map(parse_hours_remaining)
     san["landings_remaining"] = df["Landings Remaining"].map(strip_or_none).map(parse_landings_remaining)
@@ -142,8 +121,8 @@ def sanitize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     san["fingerprint"] = san.apply(lambda r: fingerprint_row(r.to_dict()), axis=1)
     return san
 
-def validate_rows(san: pd.DataFrame) -> List[Dict[str, Any]]:
-    errors: List[Dict[str, Any]] = []
+def validate_rows(san: pd.DataFrame):
+    errors = []
     def add_error(i, field, msg, severity="error"):
         errors.append({"row_index": int(i), "field": field, "message": msg, "severity": severity})
     for i, row in san.iterrows():
@@ -159,30 +138,34 @@ def validate_rows(san: pd.DataFrame) -> List[Dict[str, Any]]:
                 add_error(i, field, "Debe ser >= 0.")
         if row["type"] is not None and row["type"] not in ALLOWED_TYPES:
             add_error(i, "type", f"Tipo inválido '{row['type']}'.", "warning")
-        lcd = row["last_completed_date"]
-        dnd = row["due_next_date"]
+        lcd = row["last_completed_date"]; dnd = row["due_next_date"]
         if lcd and dnd and dnd < lcd:
             add_error(i, "due_next_date", "Due Next Date anterior a Last Completed Date.", "warning")
     return errors
 
-def import_csv_bytes(con: sqlite3.Connection, aircraft_id: int, file_name: str, content: bytes, publish_mode: str = "quarantine") -> Dict[str, Any]:
+def import_csv_bytes(con: sqlite3.Connection, aircraft_id: int, file_name: str, content: bytes, publish_mode: str = "quarantine"):
+    # Parse CSV
     df = pd.read_csv(io.BytesIO(content))
     missing = [c for c in EXPECTED_COLS if c not in df.columns]
     if missing:
         raise ValueError(f"Faltan columnas esperadas: {missing}")
+
     san = sanitize_dataframe(df)
     errors = validate_rows(san)
     total_rows = len(san)
 
-    from .utils import sha256_bytes
-    sha = sha256_bytes(content)
+    # start batch
+    from hashlib import sha256
+    sha = sha256(content).hexdigest()
     cur = con.cursor()
     cur.execute("PRAGMA foreign_keys = ON;")
+
     cur.execute("INSERT INTO import_batch(aircraft_id, file_name, file_sha256, total_rows, status) VALUES (?, ?, ?, ?, 'uploaded')",
                 (aircraft_id, file_name, sha, total_rows))
     batch_id = cur.lastrowid
     cur.execute("UPDATE import_batch SET status='validated' WHERE id=?", (batch_id,))
 
+    # record validation errors
     if errors:
         cur.executemany(
             "INSERT INTO import_error(import_batch_id, row_index, field, message, severity) VALUES (?,?,?,?,?)",
@@ -190,9 +173,12 @@ def import_csv_bytes(con: sqlite3.Connection, aircraft_id: int, file_name: str, 
         )
 
     inserted = 0
+    # hard errors (other than INSERT duplicates)
     hard_error_rows = set(e["row_index"] for e in errors if e["severity"] == "error" and e["field"] != "INSERT")
+
     for i, row in san.iterrows():
-        if i in hard_error_rows: continue
+        if i in hard_error_rows:
+            continue
         rec = (
             aircraft_id, batch_id,
             row["item_code"], row["position"], row["description"], row["type"],
@@ -201,7 +187,7 @@ def import_csv_bytes(con: sqlite3.Connection, aircraft_id: int, file_name: str, 
             row["part_number"], row["part_serial"],
             row["last_completed_date"], row["last_completed_hours"], row["last_completed_landings"], row["last_completed_city"],
             row["due_next_date"], row["due_next_hours"], row["due_next_landings"],
-            row["time_remaining_text"], row["months_remaining"], row["days_remaining"], int(row["is_overdue_time"]) if isinstance(row["is_overdue_time"], bool) else row["is_overdue_time"],
+            row["time_remaining_text"], row["months_remaining"], row["days_remaining"], row["is_overdue_time"],
             row["hours_remaining"], row["landings_remaining"], row["status"], row["status_note"], row["fingerprint"]
         )
         try:
@@ -219,6 +205,7 @@ def import_csv_bytes(con: sqlite3.Connection, aircraft_id: int, file_name: str, 
             """, rec)
             inserted += 1
         except sqlite3.IntegrityError as ex:
+            # duplicate inside this batch -> capture as error
             cur.execute(
                 "INSERT INTO import_error(import_batch_id, row_index, field, message, severity) VALUES (?,?,?,?, 'error')",
                 (batch_id, int(i), "INSERT", str(ex))
@@ -226,6 +213,7 @@ def import_csv_bytes(con: sqlite3.Connection, aircraft_id: int, file_name: str, 
 
     quarantined = 0
     if publish_mode == "quarantine":
+        # move duplicates to quarantine
         rows = cur.execute("""
             SELECT row_index, message FROM import_error 
             WHERE import_batch_id=? AND severity='error' AND field='INSERT'
@@ -252,13 +240,15 @@ def import_csv_bytes(con: sqlite3.Connection, aircraft_id: int, file_name: str, 
                 r["last_completed_date"], r["last_completed_hours"], r["last_completed_landings"], r["last_completed_city"],
                 r["due_next_date"], r["due_next_hours"], r["due_next_landings"],
                 r["time_remaining_text"], r["months_remaining"], r["days_remaining"],
-                int(r["is_overdue_time"]) if isinstance(r["is_overdue_time"], bool) else r["is_overdue_time"],
+                r["is_overdue_time"],
                 r["hours_remaining"], r["landings_remaining"], r["status"], r["status_note"], r["fingerprint"]
             ))
             quarantined += 1
-        status = 'loaded'
+        status = "loaded"
     else:
-        status = 'failed' if cur.execute("SELECT COUNT(*) FROM import_error WHERE import_batch_id=? AND severity='error'", (batch_id,)).fetchone()[0] > 0 else 'loaded'
+        status = "failed" if cur.execute(
+            "SELECT COUNT(*) FROM import_error WHERE import_batch_id=? AND severity='error'", (batch_id,)
+        ).fetchone()[0] > 0 else "loaded"
 
     error_count = cur.execute("SELECT COUNT(*) FROM import_error WHERE import_batch_id=?", (batch_id,)).fetchone()[0]
     cur.execute("""
