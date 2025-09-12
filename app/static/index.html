@@ -237,7 +237,7 @@ async function router(){
   }
   renderImportPanel();
   return;
-}
+  }
 
 
   if (parts[0] === "aircraft" && parts[2] === "audit") {
@@ -245,7 +245,8 @@ async function router(){
     if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
     setSelectedAircraftId(aid || state.selectedAircraftId || (state.aircrafts[0]?.id || 0));
     setActive("navAudit"); show("screenAudit");
-    state.auditPage = state.auditPage || 1;
+    state.auditPage = Number(state.auditPage) || 1;
+    state.auditPageSize = Number(state.auditPageSize) || 50;
     await loadAudit();
     return;
   }
@@ -551,23 +552,32 @@ async function saveItem(){
 
 async function loadAudit(){
   const aid = getSelectedAircraftId();
-  const offset = (state.auditPage - 1) * state.auditPageSize;
-  const qs = `?limit=${state.auditPageSize}&offset=${offset}`;
-  const all = el("auditAll")?.checked;
 
-  // Si el toggle "Todos" está activo, llamamos al endpoint global
+  const pageSize = Number.isFinite(Number(state.auditPageSize)) ? Number(state.auditPageSize) : 50;
+  const page = Number.isFinite(Number(state.auditPage)) ? Number(state.auditPage) : 1;
+  const offset = Math.max(0, (page - 1) * pageSize);
+
+  const qs = `?limit=${pageSize}&offset=${offset}`;
+  const all = !!(el("auditAll") && el("auditAll").checked);
   const url = all ? `/audit${qs}` : `/aircraft/${aid}/audit${qs}`;
 
   try{
     const items = await api(url);
-    if (items.length === 0 && state.auditPage > 1){
-      state.auditPage = Math.max(1, state.auditPage - 1);
-      return loadAudit();
+    el("auditPageInfo").innerText = `Página ${page}`;
+    if (!Array.isArray(items) || items.length === 0){
+      el("auditList").innerHTML = '<div class="muted small">No hay eventos para este criterio.</div>';
+      return;
     }
-    el("auditPageInfo").innerText = `Página ${state.auditPage}`;
     el("auditList").innerHTML = items.map(renderAuditItem).join("");
-  }catch(e){
-    el("auditList").innerHTML = `<div class="err small">Error al cargar historial: ${e.message}</div>`;
+  }catch(err){
+    let msg = err?.message || String(err);
+    // Si viene una lista de errores, muéstrala legible
+    try {
+      if (msg === "[object Object]" || msg.includes("[object Object]")) {
+        msg = JSON.stringify(err);
+      }
+    } catch(_) {}
+    el("auditList").innerHTML = `<div class="err small">Error al cargar historial: ${escapeHtml(msg)}</div>`;
   }
 }
 
