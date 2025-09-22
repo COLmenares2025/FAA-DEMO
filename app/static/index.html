@@ -34,11 +34,7 @@
 </head>
 <body>
   <header id="appHeader" class="hidden">
-    <div class="brand">✈️ Air Audit <span class="muted">• v1</span></div>
-    <div class="row" id="aircraftRow">
-      <label for="aircraftSelect">Avión:</label>
-      <select id="aircraftSelect" onchange="onAircraftChange()"></select>
-    </div>
+    <div class="brand">Air Audit</div>
     <nav>
       <a id="navWelcome" href="#/welcome">Inicio</a>
       <a id="navItems" href="#/aircraft/0/items" class="disabled">Ítems</a>
@@ -503,7 +499,10 @@ function updateNavLinks(){
   }
 }
 
-function getSelectedAircraftId(){ return parseInt(el('aircraftSelect')?.value || '0'); }
+function getSelectedAircraftId(){
+  const v = parseInt(el('aircraftSelect')?.value || '0');
+  return v || (state.selectedAircraftId || 0);
+}
 
 function setSelectedAircraftId(id){
   const select = el('aircraftSelect');
@@ -888,5 +887,10 @@ function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<',
 </script>
 </body>
 </html>
+
+
+
+
+
 
 

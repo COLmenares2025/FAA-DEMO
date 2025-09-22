@@ -30,7 +30,7 @@ body{
   padding:16px 24px;
   border-bottom: none;
 }
-#appHeader .brand{font-weight:700;letter-spacing:.3px}
+#appHeader .brand{font-weight:800;letter-spacing:.3px;font-size:32px}
 nav a{color:white;margin-right:12px;text-decoration:none;padding:6px 10px;border:1px solid rgba(255,255,255,.25);border-radius:8px;opacity:.95}
 nav a.active{background: rgba(255,255,255,.15); opacity:1; font-weight:600}
 nav a.disabled{pointer-events:none; opacity:.5}
