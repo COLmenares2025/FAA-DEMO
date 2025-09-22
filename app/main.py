@@ -55,6 +55,18 @@ def startup():
         ensure_default_users(cur)
         con.commit()
 
+    # Migration: add actor columns to data_ledger (idempotent)
+    with connect() as con:
+        cur = con.cursor()
+        cur.execute("PRAGMA table_info(data_ledger)")
+        dcols = {r[1] for r in cur.fetchall()}
+        if "actor_user_id" not in dcols:
+            cur.execute("ALTER TABLE data_ledger ADD COLUMN actor_user_id INTEGER")
+        if "actor_username" not in dcols:
+            cur.execute("ALTER TABLE data_ledger ADD COLUMN actor_username TEXT")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ledger_actor ON data_ledger(actor_user_id)")
+        con.commit()
+
 
 # ---------------------- Auth ----------------------
 
@@ -141,10 +153,7 @@ def create_aircraft(
             "aircraft_id": aircraft_id,
             "values": {"name": name, "model": model}
         }
-        cur.execute(
-            "INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
-            ("aircraft", "CREATE", aircraft_id, None, json_dumps(details))
-        )
+        log_ledger(cur, "aircraft", "CREATE", aircraft_id, None, details, current_user)
         con.commit()
         return {"id": aircraft_id, "name": name, "model": model}
 
@@ -177,10 +186,7 @@ def archive_aircraft(aircraft_id: int, current_user: Dict[str, Any] = Depends(re
             "before": before,
             "after": after
         }
-        cur.execute(
-            "INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
-            ("aircraft", "ARCHIVE", aircraft_id, None, json_dumps(details))
-        )
+        log_ledger(cur, "aircraft", "ARCHIVE", aircraft_id, None, details, current_user)
         con.commit()
         return {"id": aircraft_id, "status": "archived"}
 
@@ -207,10 +213,7 @@ def restore_aircraft(aircraft_id: int, current_user: Dict[str, Any] = Depends(re
             "before": before,
             "after": after
         }
-        cur.execute(
-            "INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
-            ("aircraft", "RESTORE", aircraft_id, None, json_dumps(details))
-        )
+        log_ledger(cur, "aircraft", "RESTORE", aircraft_id, None, details, current_user)
         con.commit()
         return {"id": aircraft_id, "status": "restored"}
 
@@ -314,8 +317,7 @@ def update_item(
         changed = diff_rows(current, new_values)
         if changed:
             details = {"action":"UPDATE","table":"maintenance_item","item_id": item_id,"diff": changed}
-            cur.execute("INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
-                        ("maintenance_item","UPDATE", item_id, current["import_batch_id"], json_dumps(details)))
+            log_ledger(cur, "maintenance_item", "UPDATE", item_id, current["import_batch_id"], details, current_user)
         con.commit()
         return {"id": item_id, "updated_fields": list(update.keys())}
 
@@ -323,6 +325,20 @@ def update_item(
 def json_dumps(obj) -> str:
     import json
     return json.dumps(obj, ensure_ascii=False)
+
+def log_ledger(cur, table_name: str, action: str, row_id: Optional[int], import_batch_id: Optional[int], details: Dict[str, Any], actor: Optional[Dict[str, Any]] = None) -> None:
+    actor_user_id = None
+    actor_username = None
+    if actor:
+        try:
+            actor_user_id = int(actor.get("id"))
+        except Exception:
+            actor_user_id = None
+        actor_username = actor.get("username")
+    cur.execute(
+        "INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, actor_user_id, actor_username, details) VALUES (?,?,?,?,?,?,?)",
+        (table_name, action, row_id, import_batch_id, actor_user_id, actor_username, json_dumps(details))
+    )
 
 @app.post("/aircraft/{aircraft_id}/items")
 def create_item(
@@ -370,8 +386,7 @@ def create_item(
         cur.execute("UPDATE import_batch SET inserted_rows = inserted_rows + 1 WHERE id=?", (batch_id,))
         # Ledger
         details = {"action":"INSERT","table":"maintenance_item","item_id": cur.lastrowid,"source":"manual","values": data}
-        cur.execute("INSERT INTO data_ledger(table_name, action, row_id, import_batch_id, details) VALUES (?,?,?,?,?)",
-                    ("maintenance_item","INSERT", cur.lastrowid, batch_id, json_dumps(details)))
+        log_ledger(cur, "maintenance_item", "INSERT", cur.lastrowid, batch_id, details, current_user)
         con.commit()
         return {"id": cur.lastrowid, "import_batch_id": batch_id}
 
@@ -391,25 +406,25 @@ def get_aircraft_audit(
     with connect() as con:
         cur = con.cursor()
         q = """
-        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.details
+        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.actor_user_id, l.actor_username, l.details
         FROM data_ledger l
         WHERE l.table_name = 'aircraft' AND l.row_id = :aid
 
         UNION ALL
 
-        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.details
+        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.actor_user_id, l.actor_username, l.details
         FROM data_ledger l
         JOIN maintenance_item mi ON mi.id = l.row_id
         WHERE l.table_name = 'maintenance_item' AND mi.aircraft_id = :aid
 
         UNION ALL
 
-        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.details
+        SELECT l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id, l.actor_user_id, l.actor_username, l.details
         FROM data_ledger l
         JOIN import_batch b ON b.id = l.row_id
         WHERE l.table_name = 'import_batch' AND b.aircraft_id = :aid
 
-        ORDER BY l.ts DESC, l.id DESC
+        ORDER BY 2 DESC, 1 DESC
         LIMIT :limit OFFSET :offset
         """
         rows = cur.execute(q, {"aid": aircraft_id, "limit": limit, "offset": offset}).fetchall()
@@ -443,6 +458,7 @@ def get_all_audit(
           l.id, l.ts, l.table_name, l.action, l.row_id, l.import_batch_id,
           COALESCE(mi.aircraft_id, b.aircraft_id,
                    CASE WHEN l.table_name='aircraft' THEN l.row_id END) AS aircraft_id,
+          l.actor_user_id, l.actor_username,
           l.details
         FROM data_ledger l
         LEFT JOIN maintenance_item mi
@@ -481,6 +497,22 @@ async def upload_import(
             raise HTTPException(status_code=404, detail="Aircraft no encontrado")
         try:
             result = import_csv_bytes(con, aircraft_id, file.filename, content, publish_mode=publish_mode)
+            # Registrar en ledger el resultado del import
+            try:
+                batch_id = int(result.get("import_batch_id")) if isinstance(result, dict) else None
+            except Exception:
+                batch_id = None
+            det = {
+                "action": "UPDATE",
+                "table": "import_batch",
+                "file_name": file.filename,
+                "publish_mode": publish_mode,
+                "status": result.get("status") if isinstance(result, dict) else None,
+                "inserted_rows": result.get("inserted_rows") if isinstance(result, dict) else None,
+                "errors": result.get("errors") if isinstance(result, dict) else None,
+                "quarantined": result.get("quarantined") if isinstance(result, dict) else None,
+            }
+            log_ledger(con.cursor(), "import_batch", "UPDATE", batch_id, batch_id, det, current_user)
             con.commit()
             return result
         except sqlite3.IntegrityError as e:

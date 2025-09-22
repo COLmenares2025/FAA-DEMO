@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS data_ledger (
     action TEXT NOT NULL,      -- INSERT / UPDATE
     row_id INTEGER,
     import_batch_id INTEGER,
+    actor_user_id INTEGER,
+    actor_username TEXT,
     details TEXT
 );
 

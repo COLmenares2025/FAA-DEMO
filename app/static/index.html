@@ -826,6 +826,7 @@ function renderAuditItem(ev){
   const act  = ev.action;
   const rid  = ev.row_id;
   const det  = ev.details || {};
+  const actor = ev.actor_username || (det && det.actor && det.actor.username) || '';
   let summary = '';
 
   if (tbl === 'aircraft'){
@@ -864,7 +865,7 @@ function renderAuditItem(ev){
   return `
     <div class="item">
       <div>
-        <div class="small muted">${ts}</div>
+        <div class="small muted">${ts}${actor ? ' • por ' + escapeHtml(actor) : ''}</div>
         <div><b>${summary}</b></div>
         ${diffHtml}
       </div>
