@@ -1,6 +1,6 @@
 import os
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
@@ -52,7 +52,7 @@ def startup():
 
 
 @app.post("/auth/login")
-def login(payload: Dict[str, str]):
+def login(payload: Dict[str, str], response: Response):
     username = (payload.get("username") or "").strip().lower()
     password = payload.get("password") or ""
     if not username or not password:
@@ -67,6 +67,15 @@ def login(payload: Dict[str, str]):
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
         session = create_session(cur, row["id"])
         con.commit()
+        # Set cookie httpOnly con el token de sesión
+        cookie_params = {
+            "httponly": True,
+            "samesite": "lax",
+            "path": "/",
+        }
+        if os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "yes"):
+            cookie_params["secure"] = True
+        response.set_cookie(key="session", value=session["token"], **cookie_params)
         return {
             "token": session["token"],
             "expires_at": session["expires_at"],
@@ -75,11 +84,12 @@ def login(payload: Dict[str, str]):
 
 
 @app.post("/auth/logout")
-def logout(current_user: Dict[str, Any] = Depends(require_user)):
+def logout(response: Response, current_user: Dict[str, Any] = Depends(require_user)):
     with connect() as con:
         cur = con.cursor()
         delete_session(cur, current_user["session_token"])
         con.commit()
+    response.delete_cookie("session", path="/")
     return {"ok": True}
 
 

@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Callable
 
-from fastapi import HTTPException, Header, Depends
+from fastapi import HTTPException, Header, Depends, Cookie
 
 from .db import connect
 
@@ -60,8 +60,11 @@ def delete_session(cur, token: str) -> None:
     cur.execute("DELETE FROM user_session WHERE token=?", (token,))
 
 
-def _extract_token(authorization: Optional[str]) -> str:
+def _extract_token(authorization: Optional[str], cookie_token: Optional[str] = None) -> str:
     if not authorization:
+        # Usar cookie de sesión si está presente
+        if cookie_token:
+            return cookie_token
         raise HTTPException(status_code=401, detail="Token requerido")
     prefix = "Bearer "
     if not authorization.startswith(prefix):
@@ -72,8 +75,11 @@ def _extract_token(authorization: Optional[str]) -> str:
     return token
 
 
-def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, str]:
-    token = _extract_token(authorization)
+def get_current_user(
+    authorization: Optional[str] = Header(None),
+    session: Optional[str] = Cookie(default=None),
+) -> Dict[str, str]:
+    token = _extract_token(authorization, session)
     with connect() as con:
         cur = con.cursor()
         row = cur.execute(

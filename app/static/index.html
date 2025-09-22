@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Air Audit • v1</title>
+  <title>Air Audit • v1</title>`n  <link rel="stylesheet" href="/static/styles.css" />
   <style>
     :root { --bd: #e5e7eb; --muted:#6b7280; }
     body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 24px; line-height:1.35; }
@@ -278,13 +278,12 @@ function refreshRoleUI(){
 function setSession(token, user, expiresAt){
   state.currentUser = user ? {...user} : null;
   state.sessionExpiresAt = expiresAt || null;
-  if (token){ localStorage.setItem("sessionToken", token); }
+  // Ya no persistimos token en localStorage; cookie httpOnly maneja la sesión
   if (user){ localStorage.setItem("currentUser", JSON.stringify(user)); }
   refreshRoleUI();
 }
 
 function clearSession(message){
-  localStorage.removeItem("sessionToken");
   localStorage.removeItem("currentUser");
   localStorage.removeItem("aircraftId");
   state.currentUser = null;
@@ -308,15 +307,10 @@ function clearSession(message){
 }
 
 async function restoreSession(){
-  const token = getToken();
-  if (!token){
-    clearSession("");
-    return;
-  }
   try {
     const res = await api('/auth/session');
     if (res && res.user){
-      setSession(token, res.user, res.expires_at);
+      setSession(null, res.user, res.expires_at);
       const errorBox = el("loginError");
       if (errorBox) errorBox.innerText = "";
     }
@@ -331,11 +325,9 @@ async function restoreSession(){
 async function api(path, opts={}){
   const { skipAuth, ...fetchOpts } = opts;
   const headers = new Headers(fetchOpts.headers || {});
-  if (!skipAuth){
-    const token = getToken();
-    if (token){ headers.set('Authorization', `Bearer ${token}`); }
-  }
+  // Autenticación por cookie httpOnly; no agregamos Authorization
   fetchOpts.headers = headers;
+  fetchOpts.credentials = 'include';
   const response = await fetch(path, fetchOpts);
   const contentType = response.headers.get('content-type') || '';
   const isJson = contentType.includes('application/json');
@@ -372,7 +364,7 @@ async function login(ev){
       body: JSON.stringify({ username, password }),
       skipAuth: true,
     });
-    setSession(res.token, res.user, res.expires_at);
+    setSession(null, res.user, res.expires_at);
     el('loginUser').value = '';
     el('loginPass').value = '';
     el('loginError').innerText = '';
@@ -899,3 +891,5 @@ function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<',
 </script>
 </body>
 </html>
+
+
