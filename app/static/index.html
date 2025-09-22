@@ -6,8 +6,8 @@
   <title>Air Audit • v1</title>
   <style>
     :root { --bd: #e5e7eb; --muted:#6b7280; }
-    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 24px; line-height: 1.35; }
-    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-bottom:12px; border-bottom:1px solid var(--bd); margin-bottom:16px; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 24px; line-height:1.35; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-bottom:12px; border-bottom:1px solid var(--bd); margin-bottom:16px; flex-wrap:wrap; }
     .brand { font-weight:600; }
     nav a { margin-right:12px; text-decoration:none; padding:6px 10px; border:1px solid var(--bd); border-radius:8px; color:#111827; }
     nav a.active { background:#111827; color:white; }
@@ -28,22 +28,50 @@
     .ok { color:#065f46; }
     .err { color:#991b1b; }
     .hidden { display:none; }
+    form.list > div { display:flex; flex-direction:column; gap:4px; }
   </style>
 </head>
 <body>
-  <header>
+  <header id="appHeader" class="hidden">
     <div class="brand">✈️ Air Audit <span class="muted">• v1</span></div>
-    <div class="row">
+    <div class="row" id="aircraftRow">
       <label for="aircraftSelect">Avión:</label>
       <select id="aircraftSelect" onchange="onAircraftChange()"></select>
     </div>
     <nav>
       <a id="navWelcome" href="#/welcome">Inicio</a>
       <a id="navItems" href="#/aircraft/0/items" class="disabled">Ítems</a>
-      <a id="navEdit" href="#" onclick="goNew()">Editar</a>
+      <a id="navEdit" href="#/aircraft/0/items/new" class="disabled">Agregar</a>
       <a id="navAudit" href="#/aircraft/0/audit" class="disabled">Historial</a>
     </nav>
+    <div class="row hidden" id="userBox">
+      <div class="small">
+        <div><b id="userName"></b></div>
+        <div class="pill" id="userRole"></div>
+      </div>
+      <button type="button" onclick="logout()">Salir</button>
+    </div>
   </header>
+
+  <section id="screenLogin">
+    <h2>Iniciar sesión</h2>
+    <p class="muted small">Ingresa tus credenciales para continuar.</p>
+    <form class="list" id="loginForm" onsubmit="login(event)" style="max-width:320px;">
+      <div>
+        <label for="loginUser">Usuario</label>
+        <input id="loginUser" autocomplete="username" />
+      </div>
+      <div>
+        <label for="loginPass">Contraseña</label>
+        <input id="loginPass" type="password" autocomplete="current-password" />
+      </div>
+      <div>
+        <button type="submit">Ingresar</button>
+      </div>
+    </form>
+    <div id="loginError" class="err small"></div>
+    <div class="small muted" style="margin-top:8px;">Usuarios demo: admin/admin123, mechanic/mechanic123, auditor/auditor123.</div>
+  </section>
 
   <!-- Screen: Welcome -->
   <section id="screenWelcome" class="hidden">
@@ -57,10 +85,10 @@
         </label>
       </div>
       <div class="row">
-        <input id="filterAircraft" placeholder="Buscar avión por nombre..." />
+        <input id="filterAircraftSecondary" placeholder="Buscar avión por nombre..." />
         <button onclick="renderAircraftGrid()">Buscar</button>
       </div>
-      <div class="row">
+      <div class="row" id="rowNewAircraft">
         <input id="newAircraftName" placeholder="Nombre del avión" />
         <input id="newAircraftModel" placeholder="Modelo (opcional)" />
         <button onclick="createAircraft()">Agregar avión</button>
@@ -84,8 +112,8 @@
         <button onclick="loadItems()">Buscar</button>
       </div>
       <div class="row">
-        <button onclick="toggleImport()">Importar CSV</button>  <!-- NUEVO -->
-        <button onclick="goNew()">+ Agregar ítem</button>
+        <button id="btnImportCsv" onclick="toggleImport()">Importar CSV</button>
+        <button id="btnAddItem" onclick="goNew()">+ Agregar ítem</button>
       </div>
     </div>
     <div id="importPanel" class="hidden" style="border:1px solid var(--bd); border-radius:8px; padding:12px; margin-top:8px;">
@@ -141,25 +169,33 @@
       <button onclick="goItems()">Cancelar</button>
     </div>
   </section>
+
   <section id="screenAudit" class="hidden">
-  <h2>Historial del avión</h2>
-  <div class="toolbar">
-    <div class="row">
-      <label class="small">
-        <input type="checkbox" id="auditAll" onchange="state.auditPage=1; loadAudit()"> Todos los aviones
-      </label>
+    <h2>Historial del avión</h2>
+    <div class="toolbar">
+      <div class="row">
+        <label class="small">
+          <input type="checkbox" id="auditAll" onchange="state.auditPage=1; loadAudit()"> Todos los aviones
+        </label>
+      </div>
+      <div class="row">
+        <button onclick="prevAuditPage()">◀ Anterior</button>
+        <div id="auditPageInfo" class="small muted"></div>
+        <button onclick="nextAuditPage()">Siguiente ▶</button>
+      </div>
     </div>
-    <div class="row">
-      <button onclick="prevAuditPage()">◀ Anterior</button>
-      <div id="auditPageInfo" class="small muted"></div>
-      <button onclick="nextAuditPage()">Siguiente ▶</button>
-    </div>
-  </div>
-  <div id="auditList" class="list"></div>
+    <div id="auditList" class="list"></div>
   </section>
 
 <script>
-// ---- State ----
+const ROLE_LABELS = {
+  admin: "Administrador",
+  mechanic: "Mecánico",
+  auditor: "Auditor",
+};
+
+const SCREENS = ["screenLogin","screenWelcome","screenItems","screenEdit","screenAudit"];
+
 let state = {
   aircrafts: [],
   selectedAircraftId: null,
@@ -169,287 +205,503 @@ let state = {
   total: 0,
   editingItemId: null,
   showImportPanel: false,
+  auditPage: 1,
+  auditPageSize: 50,
+  currentUser: null,
+  sessionExpiresAt: null,
 };
 
-const api = (path, opts={}) => fetch(path, opts).then(async r => {
-  if (!r.ok) {
-    let detail = "";
-    try { const j = await r.json(); detail = j.detail || JSON.stringify(j); } catch(e){ detail = r.statusText; }
-    throw new Error(detail);
-  }
-  return r.json();
-});
-
 function el(id){ return document.getElementById(id); }
-function setActive(tab){ ["navWelcome","navItems","navEdit","navAudit"].forEach(id => el(id).classList.remove("active")); el(tab).classList.add("active"); }
-function show(screenId){ ["screenWelcome","screenItems","screenEdit","screenAudit"].forEach(id => el(id).classList.add("hidden")); el(screenId).classList.remove("hidden"); }
-function getSelectedAircraftId(){ return parseInt(el("aircraftSelect").value || "0"); }
-function setSelectedAircraftId(id){ el("aircraftSelect").value = String(id); localStorage.setItem("aircraftId", String(id)); updateNavLinks(); }
 
-// --- Routing (hash) ---
-window.addEventListener("hashchange", router);
-async function router(){
+function show(screenId){
+  SCREENS.forEach(id => el(id)?.classList.add("hidden"));
+  el(screenId)?.classList.remove("hidden");
+}
+
+function setActive(tab){
+  ["navWelcome","navItems","navEdit","navAudit"].forEach(id => el(id)?.classList.remove("active"));
+  el(tab)?.classList.add("active");
+}
+
+function roleLabel(role){ return ROLE_LABELS[role?.toLowerCase()] || role || ""; }
+function roleIn(...roles){
+  if (!state.currentUser) return false;
+  const current = state.currentUser.role?.toLowerCase();
+  return roles.map(r => r?.toLowerCase()).includes(current);
+}
+function isAdmin(){ return roleIn("admin"); }
+function canCreateItems(){ return roleIn("admin","mechanic"); }
+function canEditItems(){ return roleIn("admin"); }
+function canImport(){ return roleIn("admin"); }
+function canManageAircraft(){ return roleIn("admin"); }
+
+function getToken(){ return localStorage.getItem("sessionToken"); }
+
+function refreshRoleUI(){
+  const header = el("appHeader");
+  const logged = !!state.currentUser;
+  if (header){ header.classList.toggle("hidden", !logged); }
+  const userBox = el("userBox");
+  if (userBox){ userBox.classList.toggle("hidden", !logged); }
+  const userName = el("userName");
+  const userRole = el("userRole");
+  if (logged){
+    if (userName) userName.textContent = state.currentUser.username;
+    if (userRole) userRole.textContent = roleLabel(state.currentUser.role);
+  } else {
+    if (userName) userName.textContent = "";
+    if (userRole) userRole.textContent = "";
+  }
+  const rowNew = el("rowNewAircraft");
+  if (rowNew){ rowNew.classList.toggle("hidden", !canManageAircraft()); }
+  const importBtn = el("btnImportCsv");
+  if (importBtn){ importBtn.classList.toggle("hidden", !canImport()); }
+  const addBtn = el("btnAddItem");
+  if (addBtn){ addBtn.classList.toggle("hidden", !canCreateItems()); }
+  const navEdit = el("navEdit");
+  if (navEdit){ navEdit.classList.toggle("hidden", !canCreateItems()); }
+  const navItems = el("navItems");
+  if (navItems){ navItems.classList.toggle("hidden", !logged); }
+  const navAudit = el("navAudit");
+  if (navAudit){ navAudit.classList.toggle("hidden", !logged); }
+  const navWelcome = el("navWelcome");
+  if (navWelcome){ navWelcome.classList.toggle("hidden", !logged); }
+  const aircraftRow = el("aircraftRow");
+  if (aircraftRow){ aircraftRow.classList.toggle("hidden", !logged); }
+  if (!canImport()){
+    state.showImportPanel = false;
+    renderImportPanel();
+  }
   updateNavLinks();
-  const hash = location.hash || "#/welcome";
-  const parts = hash.replace("#","").split("/").filter(Boolean);
-  // parts example: ["aircraft","1","items","123","edit"]
-  if (parts[0] === "welcome") {
-    setActive("navWelcome"); show("screenWelcome");
-    await ensureAircrafts(); renderAircraftGrid();
-    return;
-  }
-  
-  if (parts[0] === "aircraft" && parts[2] === "items") {
-  const aid = parseInt(parts[1] || "0");
-  if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
-  setSelectedAircraftId(aid || state.selectedAircraftId || (state.aircrafts[0]?.id || 0));
+}
 
-  // --- 1) NUEVO: crear ítem ---
-  if (parts.length >= 4 && parts[3] === "new") {
-    setActive("navEdit");
-    show("screenEdit");
-    state.editingItemId = null;
-    clearForm();
-    el("editTitle").innerText = "Nuevo ítem";
-    return;
-  }
+function setSession(token, user, expiresAt){
+  state.currentUser = user ? {...user} : null;
+  state.sessionExpiresAt = expiresAt || null;
+  if (token){ localStorage.setItem("sessionToken", token); }
+  if (user){ localStorage.setItem("currentUser", JSON.stringify(user)); }
+  refreshRoleUI();
+}
 
-  // --- 2) NUEVO: editar ítem ---
-  if (parts.length >= 5 && parts[4] === "edit") {
-    const itemId = parseInt(parts[3] || "0");
-    setActive("navEdit");
-    show("screenEdit");
-    state.editingItemId = itemId;
-    el("editTitle").innerText = "Editar ítem #" + itemId;
-    await loadItem(itemId);
-    return;
-  }
-
-  // --- 3) Default: listar ítems ---
-  setActive("navItems");
-  show("screenItems");
-  await loadItems();
-
-  // Abrir panel de import si venimos desde "Importar CSV"
-  if (localStorage.getItem('openImport') === '1') {
-    state.showImportPanel = true;
-    localStorage.removeItem('openImport');
-  }
+function clearSession(message){
+  localStorage.removeItem("sessionToken");
+  localStorage.removeItem("currentUser");
+  localStorage.removeItem("aircraftId");
+  state.currentUser = null;
+  state.sessionExpiresAt = null;
+  state.aircrafts = [];
+  state.selectedAircraftId = null;
+  state.items = [];
+  state.total = 0;
+  state.page = 1;
+  state.editingItemId = null;
+  state.showImportPanel = false;
+  const select = el("aircraftSelect");
+  if (select){ select.innerHTML = ""; }
+  const list = el("itemsList");
+  if (list){ list.innerHTML = ""; }
   renderImportPanel();
-  return;
+  refreshRoleUI();
+  show("screenLogin");
+  const errorBox = el("loginError");
+  if (errorBox){ errorBox.innerText = message || ""; }
+}
+
+async function restoreSession(){
+  const token = getToken();
+  if (!token){
+    clearSession("");
+    return;
   }
+  try {
+    const res = await api('/auth/session');
+    if (res && res.user){
+      setSession(token, res.user, res.expires_at);
+      const errorBox = el("loginError");
+      if (errorBox) errorBox.innerText = "";
+    }
+  } catch (err) {
+    if (err?.message){
+      const errorBox = el("loginError");
+      if (errorBox) errorBox.innerText = err.message;
+    }
+  }
+}
 
+async function api(path, opts={}){
+  const { skipAuth, ...fetchOpts } = opts;
+  const headers = new Headers(fetchOpts.headers || {});
+  if (!skipAuth){
+    const token = getToken();
+    if (token){ headers.set('Authorization', `Bearer ${token}`); }
+  }
+  fetchOpts.headers = headers;
+  const response = await fetch(path, fetchOpts);
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  let data = null;
+  if (isJson){
+    try { data = await response.json(); } catch(_) { data = null; }
+  } else {
+    data = await response.text();
+  }
+  if (response.status === 401 && !skipAuth){
+    clearSession('Tu sesión expiró. Ingresa nuevamente.');
+  }
+  if (!response.ok){
+    let detail = null;
+    if (data && typeof data === 'object'){ detail = data.detail || data.message; }
+    if (!detail && typeof data === 'string'){ detail = data; }
+    throw new Error(detail || response.statusText || 'Error de red');
+  }
+  return data;
+}
 
-  if (parts[0] === "aircraft" && parts[2] === "audit") {
-    const aid = parseInt(parts[1] || "0");
-    if (!aid || !state.aircrafts.find(a => a.id === aid)) { await ensureAircrafts(); }
-    setSelectedAircraftId(aid || state.selectedAircraftId || (state.aircrafts[0]?.id || 0));
-    setActive("navAudit"); show("screenAudit");
+async function login(ev){
+  if (ev) ev.preventDefault();
+  const username = (el('loginUser').value || '').trim();
+  const password = el('loginPass').value || '';
+  if (!username || !password){
+    el('loginError').innerText = 'Usuario y contraseña requeridos';
+    return;
+  }
+  try {
+    const res = await api('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      skipAuth: true,
+    });
+    setSession(res.token, res.user, res.expires_at);
+    el('loginUser').value = '';
+    el('loginPass').value = '';
+    el('loginError').innerText = '';
+    if (!location.hash){ location.hash = '#/welcome'; }
+    await ensureAircrafts();
+    router();
+  } catch (err){
+    el('loginError').innerText = err.message || 'No se pudo iniciar sesión';
+  }
+}
+
+async function logout(){
+  try { await api('/auth/logout', { method: 'POST' }); } catch(_) {}
+  clearSession('');
+}
+
+window.addEventListener('hashchange', router);
+
+async function router(){
+  if (!state.currentUser){
+    show('screenLogin');
+    return;
+  }
+  updateNavLinks();
+  const hash = location.hash || '#/welcome';
+  const parts = hash.replace('#','').split('/').filter(Boolean);
+  if (parts[0] === 'welcome'){
+    setActive('navWelcome');
+    show('screenWelcome');
+    await ensureAircrafts();
+    renderAircraftGrid();
+    return;
+  }
+  if (parts[0] === 'aircraft' && parts[2] === 'items'){
+    const aid = parseInt(parts[1] || '0');
+    if (!aid || !state.aircrafts.find(a => a.id === aid)){
+      await ensureAircrafts();
+    }
+    const fallbackId = state.selectedAircraftId || (state.aircrafts[0]?.id || 0);
+    setSelectedAircraftId(aid || fallbackId);
+    if (parts.length >= 4 && parts[3] === 'new'){
+      if (!canCreateItems()){
+        alert('No tienes permiso para agregar ítems.');
+        location.hash = `#/aircraft/${getSelectedAircraftId()}/items`;
+        return;
+      }
+      setActive('navEdit');
+      show('screenEdit');
+      state.editingItemId = null;
+      clearForm();
+      el('editTitle').innerText = 'Nuevo ítem';
+      return;
+    }
+    if (parts.length >= 5 && parts[4] === 'edit'){
+      if (!canEditItems()){
+        alert('No tienes permiso para editar ítems.');
+        location.hash = `#/aircraft/${getSelectedAircraftId()}/items`;
+        return;
+      }
+      const itemId = parseInt(parts[3] || '0');
+      setActive('navEdit');
+      show('screenEdit');
+      state.editingItemId = itemId;
+      el('editTitle').innerText = 'Editar ítem #' + itemId;
+      await loadItem(itemId);
+      return;
+    }
+    setActive('navItems');
+    show('screenItems');
+    await loadItems();
+    if (localStorage.getItem('openImport') === '1'){
+      state.showImportPanel = true;
+      localStorage.removeItem('openImport');
+    }
+    renderImportPanel();
+    return;
+  }
+  if (parts[0] === 'aircraft' && parts[2] === 'audit'){
+    const aid = parseInt(parts[1] || '0');
+    if (!aid || !state.aircrafts.find(a => a.id === aid)){
+      await ensureAircrafts();
+    }
+    const fallbackId = state.selectedAircraftId || (state.aircrafts[0]?.id || 0);
+    setSelectedAircraftId(aid || fallbackId);
+    setActive('navAudit');
+    show('screenAudit');
     state.auditPage = Number(state.auditPage) || 1;
     state.auditPageSize = Number(state.auditPageSize) || 50;
     await loadAudit();
     return;
   }
-  // default
-  location.hash = "#/welcome";
+  location.hash = '#/welcome';
 }
 
-// --- Aircrafts ---
 async function ensureAircrafts(){
-  const ia = el("showArchived")?.checked ? 1 : 0;
-  const list = await api('/aircraft' + (ia ? '?include_archived=1' : ''));
-  state.aircrafts = list;
-  const sel = el('aircraftSelect');
-  sel.innerHTML = '';
-  list.forEach(a => sel.add(new Option(`#${a.id} ${a.name} (${a.model})`, a.id)));
-  const saved = parseInt(localStorage.getItem("aircraftId") || "0");
-  const toUse = saved || (list[0]?.id || 0);
-  if (toUse) setSelectedAircraftId(toUse);
-  updateNavLinks();
+  if (!state.currentUser){ return; }
+  const ia = el('showArchived')?.checked ? 1 : 0;
+  try {
+    const list = await api('/aircraft' + (ia ? '?include_archived=1' : ''));
+    state.aircrafts = list;
+    const sel = el('aircraftSelect');
+    if (sel){
+      sel.innerHTML = '';
+      list.forEach(a => sel.add(new Option(`#${a.id} ${a.name} (${a.model})`, a.id)));
+    }
+    const saved = parseInt(localStorage.getItem('aircraftId') || '0');
+    const toUse = saved || (list[0]?.id || 0);
+    if (toUse) setSelectedAircraftId(toUse);
+    updateNavLinks();
+  } catch(err){
+    console.error(err);
+  }
 }
 
 function updateNavLinks(){
-  const aid = getSelectedAircraftId() || 0;
-  const items = el("navItems");
-  const edit  = el("navEdit");
-  const audit = el("navAudit");  // NUEVO
-  if (aid) {
-    items.classList.remove("disabled");
-    edit.classList.remove("disabled");
-    audit.classList.remove("disabled");                   // NUEVO
-    items.href = `#/aircraft/${aid}/items`;
-    edit.href  = `#/aircraft/${aid}/items/new`;
-    audit.href = `#/aircraft/${aid}/audit`;               // NUEVO
-  } else {
-    items.classList.add("disabled");
-    edit.classList.add("disabled");
-    audit.classList.add("disabled");                      // NUEVO
-    items.href = "#/aircraft/0/items";
-    edit.href  = "#/aircraft/0/items/new";
-    audit.href = "#/aircraft/0/audit";                    // NUEVO
+  if (!state.currentUser){
+    ['navWelcome','navItems','navEdit','navAudit'].forEach(id => el(id)?.classList.add('disabled'));
+    return;
   }
+  const aid = getSelectedAircraftId() || 0;
+  const items = el('navItems');
+  const edit  = el('navEdit');
+  const audit = el('navAudit');
+  if (aid){
+    items?.classList.remove('disabled');
+    audit?.classList.remove('disabled');
+    if (canCreateItems()){ edit?.classList.remove('disabled'); }
+    items && (items.href = `#/aircraft/${aid}/items`);
+    edit && (edit.href  = `#/aircraft/${aid}/items/new`);
+    audit && (audit.href = `#/aircraft/${aid}/audit`);
+  } else {
+    items?.classList.add('disabled');
+    edit?.classList.add('disabled');
+    audit?.classList.add('disabled');
+    if (items) items.href = '#/aircraft/0/items';
+    if (edit) edit.href  = '#/aircraft/0/items/new';
+    if (audit) audit.href = '#/aircraft/0/audit';
+  }
+}
+
+function getSelectedAircraftId(){ return parseInt(el('aircraftSelect')?.value || '0'); }
+
+function setSelectedAircraftId(id){
+  const select = el('aircraftSelect');
+  if (select){ select.value = String(id); }
+  if (id){ localStorage.setItem('aircraftId', String(id)); }
+  updateNavLinks();
+  state.selectedAircraftId = id;
 }
 
 function onAircraftChange(){
   const id = getSelectedAircraftId();
-  setSelectedAircraftId(id);   // guarda y refresca enlaces del header
-
-  const parts = (location.hash || "#/welcome").replace("#","").split("/").filter(Boolean);
-
-  if (parts[0] === "aircraft" && parts[2] === "items") {
-    if (parts.length >= 4 && parts[3] === "new") {
+  setSelectedAircraftId(id);
+  const parts = (location.hash || '#/welcome').replace('#','').split('/').filter(Boolean);
+  if (parts[0] === 'aircraft' && parts[2] === 'items'){
+    if (parts.length >= 4 && parts[3] === 'new'){
       location.hash = `#/aircraft/${id}/items/new`;
-    } else if (parts.length >= 5 && parts[4] === "edit") {
-      const itemId = parseInt(parts[3] || "0");
+    } else if (parts.length >= 5 && parts[4] === 'edit'){
+      const itemId = parseInt(parts[3] || '0');
       location.hash = `#/aircraft/${id}/items/${itemId}/edit`;
     } else {
       location.hash = `#/aircraft/${id}/items`;
     }
-  } else if (parts[0] === "aircraft" && parts[2] === "audit") {
-    // Si estás en Historial, que cambie el historial al nuevo avión
+  } else if (parts[0] === 'aircraft' && parts[2] === 'audit'){
     location.hash = `#/aircraft/${id}/audit`;
   } else {
-    // En Inicio u otra vista: solo refrescamos enlaces
     updateNavLinks();
   }
 }
 
-// welcome
 function renderAircraftGrid(){
-  const q = (el("filterAircraft").value || "").toLowerCase();
-  const cont = el("aircraftGrid");
-  const list = state.aircrafts.filter(a => a.name.toLowerCase().includes(q));
+  if (!state.currentUser){ return; }
+  const primary = (el('filterAircraft')?.value || '').toLowerCase();
+  const secondary = (el('filterAircraftSecondary')?.value || '').toLowerCase();
+  const query = primary || secondary;
+  const cont = el('aircraftGrid');
+  const list = state.aircrafts.filter(a => a.name.toLowerCase().includes(query));
   if (list.length === 0){
-    cont.innerHTML = '<div class="muted">No hay aviones.</div>'; return;
+    cont.innerHTML = '<div class="muted">No hay aviones.</div>';
+    return;
   }
   cont.innerHTML = list.map(a => {
     const archived = a.is_active === 0;
-    const actions = archived
-      ? `<a class="link" href="#/aircraft/${a.id}/items" onclick="event.preventDefault(); restoreAircraft(${a.id})">Restaurar</a>`
-      : `<a class="link" href="#/aircraft/${a.id}/items" onclick="event.preventDefault(); archiveAircraft(${a.id})">Archivar</a>`;
+    const manageLinks = canManageAircraft();
+    const importLink = canImport() ? `<a class="link" href="#/aircraft/${a.id}/items" onclick="localStorage.setItem('openImport','1')">Importar CSV</a>` : '';
+    const actions = manageLinks ? (archived ? `<a class="link" href="#/aircraft/${a.id}/items" onclick="event.preventDefault(); restoreAircraft(${a.id})">Restaurar</a>` : `<a class="link" href="#/aircraft/${a.id}/items" onclick="event.preventDefault(); archiveAircraft(${a.id})">Archivar</a>`) : '';
     return `
       <div class="card">
         <div><b>${a.name}</b> <span class="muted">(${a.model || 'N/A'})</span></div>
         <div class="small muted">Creado: ${a.created_at}</div>
         ${archived ? `<div class="small warn">Archivado: ${a.archived_at || ''}</div>` : ''}
         <div style="margin-top:8px; display:flex; gap:14px; flex-wrap:wrap;">
-          <!-- Navegación por hash (sin JS extra) -->
           <a class="link" href="#/aircraft/${a.id}/items">Ver ítems</a>
-
-          <!-- Para abrir el panel de importación, marcamos un flag y navegamos -->
-          <a class="link" href="#/aircraft/${a.id}/items"
-            onclick="localStorage.setItem('openImport','1')">Importar CSV</a>
-
-        ${actions}
+          ${importLink}
+          ${actions}
+        </div>
       </div>
-    </div>
-  `;
-}).join("");
+    `;
+  }).join('');
 }
 
 async function createAircraft(){
-  const name = el("newAircraftName").value.trim();
-  const model = el("newAircraftModel").value.trim();
-  if (!name){ alert("Nombre requerido"); return; }
-  const fd = new FormData(); fd.append('name', name); fd.append('model', model || 'N/A');
-  try{
+  if (!canManageAircraft()){ alert('No tienes permiso para crear aviones.'); return; }
+  const name = el('newAircraftName').value.trim();
+  const model = el('newAircraftModel').value.trim();
+  if (!name){ alert('Nombre requerido'); return; }
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('model', model || 'N/A');
+  try {
     const res = await api('/aircraft', { method: 'POST', body: fd });
-    el('newAircraftName').value = ""; el('newAircraftModel').value = "";
-    await ensureAircrafts(); renderAircraftGrid();
-    // Preguntar si importar ahora
-    const importar = confirm("Avión creado (#"+res.id+"). ¿Quieres importar un CSV ahora?");
+    el('newAircraftName').value = '';
+    el('newAircraftModel').value = '';
+    await ensureAircrafts();
+    renderAircraftGrid();
+    const importar = confirm(`Avión creado (#${res.id}). ¿Quieres importar un CSV ahora?`);
     if (importar){
       setSelectedAircraftId(res.id);
-      state.showImportPanel = true;  // abrir panel
+      state.showImportPanel = true;
       location.hash = `#/aircraft/${res.id}/items`;
     }
-  }catch(e){ alert("Error al crear avión: "+e.message); }
+  } catch(err){
+    alert('Error al crear avión: ' + err.message);
+  }
 }
 
 async function archiveAircraft(aid){
-  if (!confirm("¿Archivar este avión? Podrás restaurarlo luego.")) return;
-  try{
+  if (!canManageAircraft()){ alert('No tienes permiso para archivar.'); return; }
+  if (!confirm('¿Archivar este avión? Podrás restaurarlo luego.')) return;
+  try {
     await api(`/aircraft/${aid}/archive`, { method:'POST' });
-    await ensureAircrafts(); renderAircraftGrid();
-  }catch(e){ alert("No se pudo archivar: " + e.message); }
+    await ensureAircrafts();
+    renderAircraftGrid();
+  } catch(err){ alert('No se pudo archivar: ' + err.message); }
 }
 
 async function restoreAircraft(aid){
-  try{
+  if (!canManageAircraft()){ alert('No tienes permiso para restaurar.'); return; }
+  try {
     await api(`/aircraft/${aid}/restore`, { method:'POST' });
-    await ensureAircrafts(); renderAircraftGrid();
-  }catch(e){ alert("No se pudo restaurar: " + e.message); }
+    await ensureAircrafts();
+    renderAircraftGrid();
+  } catch(err){ alert('No se pudo restaurar: ' + err.message); }
 }
 
-// nav helpers
-function goItemsFor(aid){location.hash = `#/aircraft/${aid}/items`;}
+function goItemsFor(aid){ location.hash = `#/aircraft/${aid}/items`; }
 function goItems(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items`; }
-function goNew(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items/new`; }
+function goNew(){
+  if (!canCreateItems()){ alert('No tienes permiso para agregar ítems.'); return; }
+  const aid = getSelectedAircraftId();
+  location.hash = `#/aircraft/${aid}/items/new`;
+}
 
-// --- Items (list) ---
 async function loadItems(){
-  const aid = getSelectedAircraftId(); if (!aid){ alert("Selecciona un avión"); return; }
-  state.pageSize = parseInt(el("pageSize").value || "50"); 
-  const search = el("searchItems").value || "";
+  const aid = getSelectedAircraftId();
+  if (!aid){ alert('Selecciona un avión'); return; }
+  state.pageSize = parseInt(el('pageSize').value || '50');
+  const search = el('searchItems').value || '';
   const offset = (state.page-1) * state.pageSize;
-  const qs = `?limit=${state.pageSize}&offset=${offset}${search ? "&search="+encodeURIComponent(search):""}`;
-  const [items, count] = await Promise.all([
-    api(`/aircraft/${aid}/items${qs}`),
-    api(`/aircraft/${aid}/items/count${search ? "?search="+encodeURIComponent(search):""}`)
-  ]);
-  state.items = items; state.total = count.count;
-  const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize));
-  el("pageInfo").innerText = `Página ${state.page} de ${totalPages} • Total: ${state.total}`;
-  const list = el("itemsList");
-  if (items.length === 0){
-    list.innerHTML = '<div class="muted">Sin resultados.</div>'; return;
+  const qs = `?limit=${state.pageSize}&offset=${offset}${search ? '&search='+encodeURIComponent(search):''}`;
+  try {
+    const [items, count] = await Promise.all([
+      api(`/aircraft/${aid}/items${qs}`),
+      api(`/aircraft/${aid}/items/count${search ? '?search='+encodeURIComponent(search):''}`)
+    ]);
+    state.items = items;
+    state.total = count.count;
+  } catch(err){
+    if (err?.message){ alert('No se pudieron cargar los ítems: ' + err.message); }
+    return;
   }
-  list.innerHTML = items.map(r => `
-    <div class="item">
-      <div>
-        <div><b>${escapeHtml(r.description || '(sin descripción)')}</b></div>
-        <div class="small muted">${escapeHtml(r.item_code || '')} • ${escapeHtml(r.position || '')} • ${escapeHtml(r.type || '')}</div>
-        <div class="small">DueH: ${r.due_next_hours ?? ''} • DueL: ${r.due_next_landings ?? ''} • DueD: ${r.due_next_date ?? ''}</div>
-        <div class="small muted">#${r.id}</div>
+  const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize));
+  el('pageInfo').innerText = `Página ${state.page} de ${totalPages} • Total: ${state.total}`;
+  const list = el('itemsList');
+  if (state.items.length === 0){
+    list.innerHTML = '<div class="muted">Sin resultados.</div>';
+    return;
+  }
+  list.innerHTML = state.items.map(r => {
+    const editLink = canEditItems() ? `<a class="link" href="#/aircraft/${getSelectedAircraftId()}/items/${r.id}/edit">✏️ Editar</a>` : '';
+    return `
+      <div class="item">
+        <div>
+          <div><b>${escapeHtml(r.description || '(sin descripción)')}</b></div>
+          <div class="small muted">${escapeHtml(r.item_code || '')} • ${escapeHtml(r.position || '')} • ${escapeHtml(r.type || '')}</div>
+          <div class="small">DueH: ${r.due_next_hours ?? ''} • DueL: ${r.due_next_landings ?? ''} • DueD: ${r.due_next_date ?? ''}</div>
+          <div class="small muted">#${r.id}</div>
+        </div>
+        ${editLink}
       </div>
-      <a class="link" href="#/aircraft/${getSelectedAircraftId()}/items/${r.id}/edit">✏️ Editar</a>
-    </div>
-  `).join("");
+    `;
+  }).join('');
 }
 
 function prevPage(){ if (state.page>1){ state.page--; loadItems(); } }
 function nextPage(){ const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize)); if (state.page<totalPages){ state.page++; loadItems(); } }
-function editItem(id){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items/${id}/edit`; }
 
-// --- Import CSV ---
 function renderImportPanel(){
-  const panel = el("importPanel");
+  const panel = el('importPanel');
   if (!panel) return;
-  panel.classList.toggle("hidden", !state.showImportPanel);
-  if (!state.showImportPanel) {
-    el("csvFile").value = "";
-    el("importResult").textContent = "";
+  const allowed = canImport();
+  panel.classList.toggle('hidden', !(allowed && state.showImportPanel));
+  if (!allowed || !state.showImportPanel){
+    if (el('csvFile')) el('csvFile').value = '';
+    if (el('importResult')) el('importResult').textContent = '';
   }
 }
+
 function toggleImport(){
+  if (!canImport()){ alert('No tienes permiso para importar.'); return; }
   state.showImportPanel = !state.showImportPanel;
   renderImportPanel();
 }
+
 async function importCSV(){
+  if (!canImport()){ alert('No tienes permiso para importar.'); return; }
   const aid = getSelectedAircraftId();
-  const f = el("csvFile").files[0];
-  const mode = el("publishMode").value || "quarantine";
-  if (!aid){ alert("Selecciona un avión"); return; }
-  if (!f){ alert("Selecciona un archivo CSV"); return; }
+  const f = el('csvFile').files[0];
+  const mode = el('publishMode').value || 'quarantine';
+  if (!aid){ alert('Selecciona un avión'); return; }
+  if (!f){ alert('Selecciona un archivo CSV'); return; }
   const fd = new FormData();
-  fd.append("file", f); // la API espera el campo 'file'
-  el("importResult").textContent = "Subiendo y procesando...";
-  try{
+  fd.append('file', f);
+  el('importResult').textContent = 'Subiendo y procesando...';
+  try {
     const res = await api(`/aircraft/${aid}/imports?publish_mode=${encodeURIComponent(mode)}`, {
       method: 'POST',
       body: fd
     });
-    // Resumen amigable
     const summary = [
       `Lote #${res.import_batch_id || 'N/A'}`,
       `Estado: ${res.status}`,
@@ -458,126 +710,122 @@ async function importCSV(){
       `Cuarentena: ${res.quarantined || 0}`,
       `Errores: ${res.errors}`
     ].join('\n');
-    el("importResult").textContent = summary;
-    // refrescar items publicados
+    el('importResult').textContent = summary;
     await loadItems();
-  }catch(e){
-    // Errores típicos: 409 si el mismo archivo ya fue importado para ese avión
-    el("importResult").textContent = "Error: " + e.message;
+  } catch(err){
+    el('importResult').textContent = 'Error: ' + err.message;
   }
 }
 
-
-// --- Edit/New form ---
 function clearForm(){
   ["f_item_code","f_position","f_description","f_type","f_interval_months","f_interval_hours","f_interval_landings",
    "f_due_next_date","f_due_next_hours","f_due_next_landings","f_status","f_status_note","f_part_number","f_part_serial",
    "f_last_completed_date","f_last_completed_hours","f_last_completed_landings","f_last_completed_city"].forEach(id => el(id).value = "");
-  el("warnBox").innerText = "";
+  el('warnBox').innerText = '';
 }
 
 async function loadItem(id){
   clearForm();
-  const r = await api(`/items/${id}`);
-  setForm(r);
-  // warnings (non-blocking)
-  if (r.due_next_date && r.last_completed_date && r.due_next_date < r.last_completed_date){
-    el("warnBox").innerText = "⚠️ El vencimiento es anterior a la última finalización. Revisa si es correcto.";
+  try {
+    const r = await api(`/items/${id}`);
+    setForm(r);
+    if (r.due_next_date && r.last_completed_date && r.due_next_date < r.last_completed_date){
+      el('warnBox').innerText = '⚠️ El vencimiento es anterior a la última finalización. Revisa si es correcto.';
+    }
+  } catch(err){
+    alert('No se pudo cargar el ítem: ' + err.message);
   }
 }
 
 function setForm(r){
-  el("f_item_code").value = r.item_code || "";
-  el("f_position").value = r.position || "";
-  el("f_description").value = r.description || "";
-  el("f_type").value = r.type || "";
-  el("f_interval_months").value = r.interval_months ?? "";
-  el("f_interval_hours").value = r.interval_hours ?? "";
-  el("f_interval_landings").value = r.interval_landings ?? "";
-  el("f_due_next_date").value = r.due_next_date || "";
-  el("f_due_next_hours").value = r.due_next_hours ?? "";
-  el("f_due_next_landings").value = r.due_next_landings ?? "";
-  el("f_status").value = r.status || "";
-  el("f_status_note").value = r.status_note || "";
-  el("f_part_number").value = r.part_number || "";
-  el("f_part_serial").value = r.part_serial || "";
-  el("f_last_completed_date").value = r.last_completed_date || "";
-  el("f_last_completed_hours").value = r.last_completed_hours ?? "";
-  el("f_last_completed_landings").value = r.last_completed_landings ?? "";
-  el("f_last_completed_city").value = r.last_completed_city || "";
+  el('f_item_code').value = r.item_code || '';
+  el('f_position').value = r.position || '';
+  el('f_description').value = r.description || '';
+  el('f_type').value = r.type || '';
+  el('f_interval_months').value = r.interval_months ?? '';
+  el('f_interval_hours').value = r.interval_hours ?? '';
+  el('f_interval_landings').value = r.interval_landings ?? '';
+  el('f_due_next_date').value = r.due_next_date || '';
+  el('f_due_next_hours').value = r.due_next_hours ?? '';
+  el('f_due_next_landings').value = r.due_next_landings ?? '';
+  el('f_status').value = r.status || '';
+  el('f_status_note').value = r.status_note || '';
+  el('f_part_number').value = r.part_number || '';
+  el('f_part_serial').value = r.part_serial || '';
+  el('f_last_completed_date').value = r.last_completed_date || '';
+  el('f_last_completed_hours').value = r.last_completed_hours ?? '';
+  el('f_last_completed_landings').value = r.last_completed_landings ?? '';
+  el('f_last_completed_city').value = r.last_completed_city || '';
 }
 
 function getForm(){
   const v = (id) => el(id).value.trim();
-  const toInt = (s) => s==="" ? null : parseInt(s,10);
-  const payload = {
-    item_code: v("f_item_code") || null,
-    position: v("f_position") || null,
-    description: v("f_description") || null,
-    type: v("f_type") || null,
-    interval_months: toInt(v("f_interval_months")),
-    interval_hours: toInt(v("f_interval_hours")),
-    interval_landings: toInt(v("f_interval_landings")),
-    due_next_date: v("f_due_next_date") || null,
-    due_next_hours: toInt(v("f_due_next_hours")),
-    due_next_landings: toInt(v("f_due_next_landings")),
-    status: v("f_status") || null,
-    status_note: v("f_status_note") || null,
-    part_number: v("f_part_number") || null,
-    part_serial: v("f_part_serial") || null,
-    last_completed_date: v("f_last_completed_date") || null,
-    last_completed_hours: toInt(v("f_last_completed_hours")),
-    last_completed_landings: toInt(v("f_last_completed_landings")),
-    last_completed_city: v("f_last_completed_city") || null,
+  const toInt = (s) => s==='' ? null : parseInt(s,10);
+  return {
+    item_code: v('f_item_code') || null,
+    position: v('f_position') || null,
+    description: v('f_description') || null,
+    type: v('f_type') || null,
+    interval_months: toInt(v('f_interval_months')),
+    interval_hours: toInt(v('f_interval_hours')),
+    interval_landings: toInt(v('f_interval_landings')),
+    due_next_date: v('f_due_next_date') || null,
+    due_next_hours: toInt(v('f_due_next_hours')),
+    due_next_landings: toInt(v('f_due_next_landings')),
+    status: v('f_status') || null,
+    status_note: v('f_status_note') || null,
+    part_number: v('f_part_number') || null,
+    part_serial: v('f_part_serial') || null,
+    last_completed_date: v('f_last_completed_date') || null,
+    last_completed_hours: toInt(v('f_last_completed_hours')),
+    last_completed_landings: toInt(v('f_last_completed_landings')),
+    last_completed_city: v('f_last_completed_city') || null,
   };
-  return payload;
 }
 
 async function saveItem(){
+  if (state.editingItemId && !canEditItems()){ alert('No tienes permiso para editar ítems.'); return; }
+  if (!state.editingItemId && !canCreateItems()){ alert('No tienes permiso para crear ítems.'); return; }
   const aid = getSelectedAircraftId();
   const payload = getForm();
-  if (!payload.description){ alert("La descripción es requerida."); return; }
-  try{
+  if (!payload.description){ alert('La descripción es requerida.'); return; }
+  try {
     if (state.editingItemId){
-      await api(`/items/${state.editingItemId}`, { method:'PUT', headers: { "Content-Type":"application/json" }, body: JSON.stringify(payload) });
-      alert("Ítem actualizado.");
+      await api(`/items/${state.editingItemId}`, { method:'PUT', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+      alert('Ítem actualizado.');
     } else {
-      await api(`/aircraft/${aid}/items`, { method:'POST', headers: { "Content-Type":"application/json" }, body: JSON.stringify(payload) });
-      alert("Ítem creado.");
+      await api(`/aircraft/${aid}/items`, { method:'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+      alert('Ítem creado.');
     }
     goItems();
     await loadItems();
-  }catch(e){ alert("Error al guardar: "+e.message); }
+  } catch(err){ alert('Error al guardar: ' + err.message); }
 }
 
 async function loadAudit(){
   const aid = getSelectedAircraftId();
-
   const pageSize = Number.isFinite(Number(state.auditPageSize)) ? Number(state.auditPageSize) : 50;
   const page = Number.isFinite(Number(state.auditPage)) ? Number(state.auditPage) : 1;
   const offset = Math.max(0, (page - 1) * pageSize);
-
   const qs = `?limit=${pageSize}&offset=${offset}`;
-  const all = !!(el("auditAll") && el("auditAll").checked);
+  const all = !!(el('auditAll') && el('auditAll').checked);
   const url = all ? `/audit${qs}` : `/aircraft/${aid}/audit${qs}`;
-
-  try{
+  try {
     const items = await api(url);
-    el("auditPageInfo").innerText = `Página ${page}`;
+    el('auditPageInfo').innerText = `Página ${page}`;
     if (!Array.isArray(items) || items.length === 0){
-      el("auditList").innerHTML = '<div class="muted small">No hay eventos para este criterio.</div>';
+      el('auditList').innerHTML = '<div class="muted small">No hay eventos para este criterio.</div>';
       return;
     }
-    el("auditList").innerHTML = items.map(renderAuditItem).join("");
-  }catch(err){
+    el('auditList').innerHTML = items.map(renderAuditItem).join('');
+  } catch(err){
     let msg = err?.message || String(err);
-    // Si viene una lista de errores, muéstrala legible
     try {
-      if (msg === "[object Object]" || msg.includes("[object Object]")) {
+      if (msg === '[object Object]' || msg.includes('[object Object]')){
         msg = JSON.stringify(err);
       }
-    } catch(_) {}
-    el("auditList").innerHTML = `<div class="err small">Error al cargar historial: ${escapeHtml(msg)}</div>`;
+    } catch(_){}
+    el('auditList').innerHTML = `<div class="err small">Error al cargar historial: ${escapeHtml(msg)}</div>`;
   }
 }
 
@@ -590,40 +838,39 @@ function renderAuditItem(ev){
   const act  = ev.action;
   const rid  = ev.row_id;
   const det  = ev.details || {};
-  let summary = "";
+  let summary = '';
 
-  if (tbl === "aircraft"){
-    if (act === "CREATE"){
+  if (tbl === 'aircraft'){
+    if (act === 'CREATE'){
       summary = `✈️ Creado avión "${escapeHtml(det?.values?.name || '')}" (${escapeHtml(det?.values?.model || '')})`;
-    } else if (act === "ARCHIVE"){
+    } else if (act === 'ARCHIVE'){
       summary = `📦 Archivado avión "${escapeHtml(det?.name || '')}"`;
-    } else if (act === "RESTORE"){
+    } else if (act === 'RESTORE'){
       summary = `♻️ Restaurado avión "${escapeHtml(det?.name || '')}"`;
     } else {
       summary = `✈️ Evento de avión (${act})`;
     }
-  } else if (tbl === "maintenance_item"){
-    if (act === "INSERT"){
+  } else if (tbl === 'maintenance_item'){
+    if (act === 'INSERT'){
       summary = `➕ Ítem creado (id=${rid})`;
-    } else if (act === "UPDATE"){
+    } else if (act === 'UPDATE'){
       const fields = det?.diff ? Object.keys(det.diff) : [];
-      summary = `✏️ Ítem actualizado (id=${rid}) — campos: ${fields.join(", ")}`;
+      summary = `✏️ Ítem actualizado (id=${rid}) — campos: ${fields.join(', ')}`;
     } else {
       summary = `Ítem evento (${act}) (id=${rid})`;
     }
-  } else if (tbl === "import_batch"){
+  } else if (tbl === 'import_batch'){
     summary = `📥 Lote ${rid} — acción: ${act}`;
   } else {
     summary = `${tbl} — ${act}`;
   }
 
-  // Mostrar diff si existe
-  let diffHtml = "";
+  let diffHtml = '';
   if (det && det.diff){
     const rows = Object.entries(det.diff).map(([k,v]) =>
       `<div class="small"><b>${escapeHtml(k)}</b>: ${escapeHtml(String(v.from))} → ${escapeHtml(String(v.to))}</div>`
-    ).join("");
-    diffHtml = rows ? `<div style="margin-top:6px;">${rows}</div>` : "";
+    ).join('');
+    diffHtml = rows ? `<div style="margin-top:6px;">${rows}</div>` : '';
   }
 
   return `
@@ -637,13 +884,16 @@ function renderAuditItem(ev){
   `;
 }
 
-// escape
-function escapeHtml(s){ return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
-// init
 (async () => {
+  await restoreSession();
+  if (!state.currentUser){
+    show('screenLogin');
+    return;
+  }
+  if (!location.hash) location.hash = '#/welcome';
   await ensureAircrafts();
-  if (!location.hash) location.hash = "#/welcome";
   router();
 })();
 </script>

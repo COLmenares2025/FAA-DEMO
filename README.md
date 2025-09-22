@@ -17,3 +17,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 Open http://127.0.0.1:8000
+
+## Autenticación
+
+Al iniciar la aplicación, ingresa con alguno de los usuarios demo:
+
+| Rol          | Usuario   | Contraseña    |
+|--------------|-----------|---------------|
+| Administrador| `admin`   | `admin123`    |
+| Mecánico     | `mechanic`| `mechanic123` |
+| Auditor      | `auditor` | `auditor123`  |
+
+Los roles tienen los siguientes permisos:
+
+- **Administrador:** acceso total (gestión de aviones, importaciones, creación y edición de ítems).
+- **Mecánico:** puede consultar información y crear ítems manuales.
+- **Auditor:** acceso de solo lectura para navegar por la información y el historial.

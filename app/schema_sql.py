@@ -121,6 +121,23 @@ CREATE TABLE IF NOT EXISTS data_ledger (
     details TEXT
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin','mechanic','auditor')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_session (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_item_aircraft ON maintenance_item(aircraft_id);
 CREATE INDEX IF NOT EXISTS idx_item_status ON maintenance_item(status);
@@ -130,6 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_item_due_landings ON maintenance_item(due_next_la
 CREATE INDEX IF NOT EXISTS idx_item_due_date ON maintenance_item(due_next_date);
 CREATE INDEX IF NOT EXISTS idx_q_batch ON maintenance_item_quarantine(import_batch_id);
 CREATE INDEX IF NOT EXISTS idx_q_fp ON maintenance_item_quarantine(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_user_session_user ON user_session(user_id);
 
 -- Append-only guards
 CREATE TRIGGER IF NOT EXISTS forbid_delete_aircraft
