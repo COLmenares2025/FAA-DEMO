@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import sqlite3
 from .importer import import_csv_bytes
 
@@ -17,6 +18,10 @@ from .auth import (
     require_role,
     require_user,
 )
+
+# Static files (serve /static/*)
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app = FastAPI(title="Air Audit (Append-only) — v1 screens")
 
