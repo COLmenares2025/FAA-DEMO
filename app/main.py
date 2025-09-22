@@ -20,10 +20,9 @@ from .auth import (
 )
 
 # Static files (serve /static/*)
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+## STATIC MOUNT MOVED BELOW
 
-app = FastAPI(title="Air Audit (Append-only) — v1 screens")
+app = FastAPI(title="Air Audit v1")
 
 # CORS (adjust in prod)
 app.add_middleware(
@@ -33,6 +32,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static files (serve /static/*)
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.on_event("startup")
 def startup():
@@ -489,3 +492,5 @@ async def upload_import(
         except Exception as e:
             con.rollback()
             raise HTTPException(status_code=400, detail=str(e))
+
+
