@@ -85,10 +85,7 @@
           <input type="checkbox" id="showArchived" onchange="ensureAircrafts().then(renderAircraftGrid)"> Mostrar archivados
         </label>
       </div>
-      <div class="row">
-        <input id="filterAircraftSecondary" placeholder="Buscar avión por nombre..." />
-        <button onclick="renderAircraftGrid()">Buscar</button>
-      </div>
+      
       <div class="row" id="rowNewAircraft">
         <input id="newAircraftName" placeholder="Nombre del avión" />
         <input id="newAircraftModel" placeholder="Modelo (opcional)" />
@@ -539,8 +536,7 @@ function onAircraftChange(){
 function renderAircraftGrid(){
   if (!state.currentUser){ return; }
   const primary = (el('filterAircraft')?.value || '').toLowerCase();
-  const secondary = (el('filterAircraftSecondary')?.value || '').toLowerCase();
-  const query = primary || secondary;
+  const query = primary;
   const cont = el('aircraftGrid');
   const list = state.aircrafts.filter(a => a.name.toLowerCase().includes(query));
   if (list.length === 0){
