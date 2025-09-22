@@ -1,6 +1,6 @@
 import os
 from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
@@ -9,6 +9,14 @@ from .importer import import_csv_bytes
 from .db import connect, DB_PATH
 from .schema_sql import SCHEMA_SQL
 from .utils import normalize_payload, fingerprint_from_row, diff_rows
+from .auth import (
+    ensure_default_users,
+    create_session,
+    delete_session,
+    verify_password,
+    require_role,
+    require_user,
+)
 
 app = FastAPI(title="Air Audit (Append-only) — v1 screens")
 
@@ -36,7 +44,56 @@ def startup():
             cur.execute("ALTER TABLE aircraft ADD COLUMN archived_at TEXT")
         # índice útil
         cur.execute("CREATE INDEX IF NOT EXISTS idx_aircraft_active ON aircraft(is_active)")
+        ensure_default_users(cur)
         con.commit()
+
+
+# ---------------------- Auth ----------------------
+
+
+@app.post("/auth/login")
+def login(payload: Dict[str, str]):
+    username = (payload.get("username") or "").strip().lower()
+    password = payload.get("password") or ""
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Usuario y contraseña requeridos")
+    with connect() as con:
+        cur = con.cursor()
+        row = cur.execute(
+            "SELECT id, username, password_hash, password_salt, role FROM users WHERE username=?",
+            (username,),
+        ).fetchone()
+        if not row or not verify_password(password, row["password_salt"], row["password_hash"]):
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        session = create_session(cur, row["id"])
+        con.commit()
+        return {
+            "token": session["token"],
+            "expires_at": session["expires_at"],
+            "user": {"id": row["id"], "username": row["username"], "role": row["role"]},
+        }
+
+
+@app.post("/auth/logout")
+def logout(current_user: Dict[str, Any] = Depends(require_user)):
+    with connect() as con:
+        cur = con.cursor()
+        delete_session(cur, current_user["session_token"])
+        con.commit()
+    return {"ok": True}
+
+
+@app.get("/auth/session")
+def session(current_user: Dict[str, Any] = Depends(require_user)):
+    return {
+        "active": True,
+        "user": {
+            "id": current_user["id"],
+            "username": current_user["username"],
+            "role": current_user["role"],
+        },
+        "expires_at": current_user["session_expires_at"],
+    }
 
 @app.get("/", response_class=HTMLResponse)
 def index():
@@ -46,7 +103,11 @@ def index():
 
 # ---------------------- Aircraft ----------------------
 @app.post("/aircraft")
-def create_aircraft(name: str = Form(...), model: str = Form("N/A")):
+def create_aircraft(
+    name: str = Form(...),
+    model: str = Form("N/A"),
+    current_user: Dict[str, Any] = Depends(require_role("admin")),
+):
     name = name.strip()
     model = (model or "N/A").strip()
     if not name:
@@ -76,7 +137,7 @@ def list_aircraft():
         return [dict(r) for r in rows]"""
 
 @app.post("/aircraft/{aircraft_id}/archive")
-def archive_aircraft(aircraft_id: int):
+def archive_aircraft(aircraft_id: int, current_user: Dict[str, Any] = Depends(require_role("admin"))):
     with connect() as con:
         cur = con.cursor()
         r = cur.execute("SELECT id, name, model, is_active, archived_at FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
@@ -106,7 +167,7 @@ def archive_aircraft(aircraft_id: int):
         return {"id": aircraft_id, "status": "archived"}
 
 @app.post("/aircraft/{aircraft_id}/restore")
-def restore_aircraft(aircraft_id: int):
+def restore_aircraft(aircraft_id: int, current_user: Dict[str, Any] = Depends(require_role("admin"))):
     with connect() as con:
         cur = con.cursor()
         r = cur.execute("SELECT id, name, model, is_active, archived_at FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
@@ -136,7 +197,7 @@ def restore_aircraft(aircraft_id: int):
         return {"id": aircraft_id, "status": "restored"}
 
 @app.get("/aircraft")
-def list_aircraft(include_archived: int = 0):
+def list_aircraft(include_archived: int = 0, current_user: Dict[str, Any] = Depends(require_user)):
     with connect() as con:
         if include_archived:
             rows = con.execute(
@@ -151,7 +212,13 @@ def list_aircraft(include_archived: int = 0):
 
 # ---------------------- Items (published) ----------------------
 @app.get("/aircraft/{aircraft_id}/items")
-def list_items(aircraft_id: int, limit: int = 50, offset: int = 0, search: Optional[str] = None):
+def list_items(
+    aircraft_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    search: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(require_user),
+):
     q = """
         SELECT mi.*
         FROM v_items_loaded mi
@@ -167,7 +234,11 @@ def list_items(aircraft_id: int, limit: int = 50, offset: int = 0, search: Optio
         return [dict(r) for r in rows]
 
 @app.get("/aircraft/{aircraft_id}/items/count")
-def count_items(aircraft_id: int, search: Optional[str] = None):
+def count_items(
+    aircraft_id: int,
+    search: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(require_user),
+):
     q = """
         SELECT COUNT(*) AS n
         FROM v_items_loaded mi
@@ -183,7 +254,7 @@ def count_items(aircraft_id: int, search: Optional[str] = None):
 
 # ---------------------- Item detail & update ----------------------
 @app.get("/items/{item_id}")
-def get_item(item_id: int):
+def get_item(item_id: int, current_user: Dict[str, Any] = Depends(require_user)):
     with connect() as con:
         r = con.execute("SELECT * FROM maintenance_item WHERE id=?", (item_id,)).fetchone()
         if not r:
@@ -191,7 +262,11 @@ def get_item(item_id: int):
         return dict(r)
 
 @app.put("/items/{item_id}")
-def update_item(item_id: int, payload: Dict[str, Any]):
+def update_item(
+    item_id: int,
+    payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(require_role("admin")),
+):
     # Normalize input
     update = normalize_payload(payload)
     if not update:
@@ -232,7 +307,11 @@ def json_dumps(obj) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
 @app.post("/aircraft/{aircraft_id}/items")
-def create_item(aircraft_id: int, payload: Dict[str, Any]):
+def create_item(
+    aircraft_id: int,
+    payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic")),
+):
     data = normalize_payload(payload)
     # Required
     if not data.get("description"):
@@ -279,7 +358,12 @@ def create_item(aircraft_id: int, payload: Dict[str, Any]):
         return {"id": cur.lastrowid, "import_batch_id": batch_id}
 
 @app.get("/aircraft/{aircraft_id}/audit")
-def get_aircraft_audit(aircraft_id: int, limit: int = 50, offset: int = 0):
+def get_aircraft_audit(
+    aircraft_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: Dict[str, Any] = Depends(require_user),
+):
     """
     Devuelve eventos del ledger relacionados al avión:
       - Eventos directos de 'aircraft' (CREATE/ARCHIVE/RESTORE)
@@ -325,7 +409,11 @@ def get_aircraft_audit(aircraft_id: int, limit: int = 50, offset: int = 0):
         return out
 
 @app.get("/audit")
-def get_all_audit(limit: int = 50, offset: int = 0):
+def get_all_audit(
+    limit: int = 50,
+    offset: int = 0,
+    current_user: Dict[str, Any] = Depends(require_user),
+):
     """
     Devuelve eventos del ledger de TODOS los aviones.
     Incluye aircraft_id en la salida para identificar cada evento.
@@ -361,7 +449,12 @@ def get_all_audit(limit: int = 50, offset: int = 0):
 
 
 @app.post("/aircraft/{aircraft_id}/imports")
-async def upload_import(aircraft_id: int, publish_mode: str = "quarantine", file: UploadFile = File(...)):
+async def upload_import(
+    aircraft_id: int,
+    publish_mode: str = "quarantine",
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(require_role("admin")),
+):
     content = await file.read()
     with connect() as con:
         # verificar que el avión existe
