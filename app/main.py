@@ -449,7 +449,7 @@ def get_all_audit(
           ON l.table_name='maintenance_item' AND mi.id = l.row_id
         LEFT JOIN import_batch b
           ON l.table_name='import_batch' AND b.id = l.row_id
-        ORDER BY ts DESC, id DESC
+        ORDER BY 2 DESC, 1 DESC
         LIMIT :limit OFFSET :offset
         """
         rows = cur.execute(q, {"limit": limit, "offset": offset}).fetchall()
@@ -492,5 +492,6 @@ async def upload_import(
         except Exception as e:
             con.rollback()
             raise HTTPException(status_code=400, detail=str(e))
+
 
 
