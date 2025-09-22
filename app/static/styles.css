@@ -1,19 +1,19 @@
 :root{
-  --bg: #0f172a;
-  --panel: #111827;
-  --muted: #94a3b8;
-  --text: #e5e7eb;
-  --primary: #6366f1;
-  --primary-600:#4f46e5;
-  --danger:#ef4444;
-  --ok:#10b981;
-  --border:#1f2937;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --muted: #64748b;
+  --text: #0f172a;
+  --primary: #2563eb;
+  --primary-600:#1d4ed8;
+  --danger:#dc2626;
+  --ok:#16a34a;
+  --border:#e5e7eb;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
   margin:0; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji;
-  background: linear-gradient(180deg,#0b1220 0%, #0f172a 100%);
+  background: var(--bg);
   color:var(--text);
 }
 .container{max-width:1100px;margin:0 auto;padding:24px}
@@ -21,29 +21,37 @@ body{
   background: var(--panel);
   border:1px solid var(--border);
   border-radius:14px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  box-shadow: 0 8px 20px rgba(15,23,42,.06);
   padding:20px;
 }
-.header{
+#appHeader{
   background: linear-gradient(90deg, var(--primary) 0%, var(--primary-600) 100%);
   color:white;
   padding:16px 24px;
+  border-bottom: none;
 }
-.header .brand{font-weight:700;letter-spacing:.3px}
-.nav a{color:white;margin-right:16px;text-decoration:none;opacity:.85}
-.nav a.active{opacity:1;font-weight:600}
-.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#0b1020;color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer}
-.btn:hover{border-color:#313a4d}
+#appHeader .brand{font-weight:700;letter-spacing:.3px}
+nav a{color:white;margin-right:12px;text-decoration:none;padding:6px 10px;border:1px solid rgba(255,255,255,.25);border-radius:8px;opacity:.95}
+nav a.active{background: rgba(255,255,255,.15); opacity:1; font-weight:600}
+nav a.disabled{pointer-events:none; opacity:.5}
+#appHeader button{background: rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25); color:white; border-radius:10px; padding:8px 12px}
+#appHeader button:hover{background: rgba(255,255,255,.25)}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#ffffff;color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer}
+.btn:hover{border-color:#cbd5e1}
 .btn.primary{background: var(--primary); border-color: transparent; color: white}
 .btn.primary:hover{background: var(--primary-600)}
-.btn.danger{background: #2a0f12; border-color:#3b0f12; color:#fecaca}
-input,select{width:100%;background:#0b1020;border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:10px}
+.btn.danger{background: #fee2e2; border-color:#fecaca; color:#7f1d1d}
+input,select{width:100%;background:#ffffff;border:1px solid #cbd5e1;color:var(--text);padding:10px 12px;border-radius:10px}
 label{display:block;color:var(--muted);font-size:12px;margin:6px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
-.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;background:#111827;border:1px solid #262e40;color:#cbd5e1}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3}
 .muted{color:var(--muted)}
 .hidden{display:none !important}
 table{width:100%;border-collapse:separate;border-spacing:0 8px}
 th,td{padding:10px 12px;background:var(--panel);border:1px solid var(--border)}
-th{color:#cbd5e1;font-weight:600}
+th{color:#0f172a;font-weight:600}
 .link{color:var(--primary)}
+
+/* Center login card and improve contrast */
+#screenLogin{max-width: 480px; margin: 64px auto; background: var(--panel); border:1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 20px rgba(15,23,42,.06);} 
+#screenLogin h2{margin-top:0}
