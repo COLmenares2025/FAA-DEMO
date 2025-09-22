@@ -409,7 +409,7 @@ def get_aircraft_audit(
         JOIN import_batch b ON b.id = l.row_id
         WHERE l.table_name = 'import_batch' AND b.aircraft_id = :aid
 
-        ORDER BY ts DESC, id DESC
+        ORDER BY l.ts DESC, l.id DESC
         LIMIT :limit OFFSET :offset
         """
         rows = cur.execute(q, {"aid": aircraft_id, "limit": limit, "offset": offset}).fetchall()
