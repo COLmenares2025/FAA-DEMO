@@ -316,9 +316,6 @@ function setSession(token, user, expiresAt){
     localStorage.setItem('currentUser', JSON.stringify(user));
   }
   refreshRoleUI();
-} : null;
-  state.sessionExpiresAt = expiresAt || null;
-  // Guardar token opcionalmente para fallback por Authorization\n  if (token){ localStorage.setItem('sessionToken', token); } else { localStorage.removeItem('sessionToken'); }\n  if (user){ localStorage.setItem('currentUser', JSON.stringify(user)); }\n  refreshRoleUI();e.setItem('currentUser', JSON.stringify(user)); }\n  refreshRoleUI();
 }
 
 function clearSession(message){
@@ -406,7 +403,7 @@ async function login(ev){
       body: JSON.stringify({ username, password }),
       skipAuth: true,
     });
-    setSession(null, res.user, res.expires_at);
+    setSession(res.token, res.user, res.expires_at);
     el('loginUser').value = '';
     el('loginPass').value = '';
     el('loginError').innerText = '';
@@ -1397,7 +1394,6 @@ function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<',
 
 
 
-  localStorage.removeItem('currentUser'); localStorage.removeItem('sessionToken');
 
 
 
