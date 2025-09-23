@@ -56,3 +56,17 @@ th{color:#0f172a;font-weight:600}
 /* Center login card and improve contrast */
 #screenLogin{max-width: 480px; margin: 64px auto; background: var(--panel); border:1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 20px rgba(15,23,42,.06);} 
 #screenLogin h2{margin-top:0}
+
+/* Welcome layout improvements */
+#screenWelcome .toolbar{
+  display:grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+#screenWelcome .toolbar > .row:first-child{ grid-column: 1; }
+#screenWelcome #rowNewAircraft{ grid-column: 2; }
+#screenWelcome #newAircraftTC{ grid-column: 2; }
+@media (max-width: 900px){
+  #screenWelcome .toolbar{ grid-template-columns: 1fr; }
+}
