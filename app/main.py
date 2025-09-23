@@ -1,5 +1,6 @@
 import os
 from typing import Optional, Dict, Any, List
+from datetime import datetime, date
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,13 +25,26 @@ from .auth import (
 
 app = FastAPI(title="Air Audit v1")
 
-# CORS (adjust in prod)
+# CORS configurable por variables de entorno
+def _parse_csv_env(s: str) -> list[str]:
+    parts = [p.strip() for p in (s or "").split(",")]
+    return [p for p in parts if p]
+
+_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+_methods_env = os.getenv("CORS_ALLOW_METHODS", "*")
+_headers_env = os.getenv("CORS_ALLOW_HEADERS", "*")
+_creds_env = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() in ("1", "true", "yes")
+
+_allow_origins = ["*"] if _origins_env.strip() == "*" else _parse_csv_env(_origins_env)
+_allow_methods = ["*"] if _methods_env.strip() == "*" else _parse_csv_env(_methods_env)
+_allow_headers = ["*"] if _headers_env.strip() == "*" else _parse_csv_env(_headers_env)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allow_origins,
+    allow_credentials=_creds_env,
+    allow_methods=_allow_methods,
+    allow_headers=_allow_headers,
 )
 
 # Static files (serve /static/*)
@@ -93,6 +107,16 @@ def login(payload: Dict[str, str], response: Response):
             "samesite": "lax",
             "path": "/",
         }
+        # Overrides por entorno
+        samesite_env = (os.getenv("COOKIE_SAMESITE", "lax") or "").strip().lower()
+        if samesite_env in ("lax", "strict", "none"):
+            cookie_params["samesite"] = samesite_env
+        domain_env = (os.getenv("COOKIE_DOMAIN", "") or "").strip()
+        if domain_env:
+            cookie_params["domain"] = domain_env
+        secure_env = os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
+        if cookie_params.get("samesite") == "none" or secure_env:
+            cookie_params["secure"] = True
         if os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "yes"):
             cookie_params["secure"] = True
         response.set_cookie(key="session", value=session["token"], **cookie_params)
@@ -527,3 +551,383 @@ async def upload_import(
 
 
 
+# ===================== MTRs API =====================
+
+def _parse_iso_date(s: Optional[str]) -> Optional[date]:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s).date()
+    except Exception:
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+def _ensure_today_or_past(d: Optional[date], field: str):
+    if not d:
+        raise HTTPException(status_code=400, detail=f"{field} es requerido en formato YYYY-MM-DD")
+    if d > date.today():
+        raise HTTPException(status_code=400, detail=f"{field} no puede ser futuro")
+
+def _validate_tc(v: Any, allow_float: bool) -> Optional[float]:
+    if v is None or v == "":
+        return None
+    try:
+        if allow_float:
+            x = float(v)
+            if x < 0:
+                raise ValueError
+            return x
+        else:
+            x = int(v)
+            if x < 0:
+                raise ValueError
+            return x
+    except Exception:
+        raise HTTPException(status_code=400, detail="Valores de TIME & CYCLES inválidos")
+
+def _validate_city(code: str) -> str:
+    code = (code or "").strip().upper()
+    if not code or len(code) not in (3,4) or not code.isalpha():
+        raise HTTPException(status_code=400, detail="Ciudad debe ser código IATA/ICAO (3–4 letras)")
+    return code
+
+def _get_mtr(cur, mtr_id: int):
+    m = cur.execute("SELECT * FROM mtr WHERE id=?", (mtr_id,)).fetchone()
+    if not m:
+        raise HTTPException(status_code=404, detail="MTR no encontrado")
+    return m
+
+@app.get("/mtrs")
+def list_mtrs(limit: int = 50, offset: int = 0, current_user: Dict[str, Any] = Depends(require_user)):
+    with connect() as con:
+        rows = con.execute(
+            "SELECT * FROM v_mtr_list ORDER BY id DESC LIMIT :limit OFFSET :offset",
+            {"limit": limit, "offset": offset},
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+@app.get("/aircraft/{aircraft_id}/time-cycles")
+def get_aircraft_time_cycles(aircraft_id: int, current_user: Dict[str, Any] = Depends(require_user)):
+    with connect() as con:
+        cur = con.cursor()
+        a = cur.execute("SELECT id FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        if not a:
+            raise HTTPException(status_code=404, detail="Aircraft no encontrado")
+        r = cur.execute(
+            "SELECT aircraft_id, aircraft_hours, aircraft_landings, apu_hours, apu_cycles, engine_1_hours, engine_1_cycles, engine_2_hours, engine_2_cycles, updated_at FROM aircraft_time_cycles WHERE aircraft_id=?",
+            (aircraft_id,)
+        ).fetchone()
+        return dict(r) if r else None
+
+@app.post("/mtrs")
+def create_mtr(payload: Dict[str, Any], current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    aid = payload.get("aircraft_id")
+    wcd = _parse_iso_date(payload.get("work_complete_date"))
+    _ensure_today_or_past(wcd, "work_complete_date")
+    serial = (payload.get("aircraft_serial_no") or "").strip()
+    reg = (payload.get("aircraft_reg_no") or "").strip()
+    city = _validate_city(payload.get("work_complete_city") or "")
+    if not (aid and serial and reg):
+        raise HTTPException(status_code=400, detail="Campos requeridos: aircraft_id, aircraft_serial_no, aircraft_reg_no")
+    tc = payload.get("time_cycles") or {}
+    tc_norm = {
+        "aircraft_hours": _validate_tc(tc.get("aircraft_hours"), True),
+        "aircraft_landings": _validate_tc(tc.get("aircraft_landings"), False),
+        "apu_hours": _validate_tc(tc.get("apu_hours"), True),
+        "apu_cycles": _validate_tc(tc.get("apu_cycles"), False),
+        "engine_1_hours": _validate_tc(tc.get("engine_1_hours"), True),
+        "engine_1_cycles": _validate_tc(tc.get("engine_1_cycles"), False),
+        "engine_2_hours": _validate_tc(tc.get("engine_2_hours"), True),
+        "engine_2_cycles": _validate_tc(tc.get("engine_2_cycles"), False),
+    }
+    upd_air_tc = bool(payload.get("update_aircraft_time_cycles"))
+    with connect() as con:
+        cur = con.cursor()
+        a = cur.execute("SELECT id, name, model FROM aircraft WHERE id=?", (aid,)).fetchone()
+        if not a:
+            raise HTTPException(status_code=404, detail="Aircraft no encontrado")
+        # Crear MTR borrador
+        cur.execute(
+            """
+            INSERT INTO mtr(aircraft_id, status, work_complete_date, aircraft_serial_no, aircraft_reg_no, work_complete_city, created_by)
+            VALUES (?, 'borrador', ?, ?, ?, ? , ?)
+            """,
+            (aid, wcd.isoformat(), serial, reg, city, current_user.get("id")),
+        )
+        mtr_id = cur.lastrowid
+        # Snapshot TC
+        cur.execute(
+            """
+            INSERT INTO mtr_time_cycles_snapshot(
+              mtr_id, aircraft_hours, aircraft_landings, apu_hours, apu_cycles,
+              engine_1_hours, engine_1_cycles, engine_2_hours, engine_2_cycles
+            ) VALUES (?,?,?,?,?,?,?,?,?)
+            """,
+            (mtr_id, tc_norm["aircraft_hours"], tc_norm["aircraft_landings"], tc_norm["apu_hours"], tc_norm["apu_cycles"],
+             tc_norm["engine_1_hours"], tc_norm["engine_1_cycles"], tc_norm["engine_2_hours"], tc_norm["engine_2_cycles"]),
+        )
+        # Upsert TC del avión si corresponde
+        if upd_air_tc:
+            cur.execute(
+                """
+                INSERT INTO aircraft_time_cycles(
+                  aircraft_id, aircraft_hours, aircraft_landings, apu_hours, apu_cycles,
+                  engine_1_hours, engine_1_cycles, engine_2_hours, engine_2_cycles, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?, datetime('now'))
+                ON CONFLICT(aircraft_id) DO UPDATE SET
+                  aircraft_hours=excluded.aircraft_hours,
+                  aircraft_landings=excluded.aircraft_landings,
+                  apu_hours=excluded.apu_hours,
+                  apu_cycles=excluded.apu_cycles,
+                  engine_1_hours=excluded.engine_1_hours,
+                  engine_1_cycles=excluded.engine_1_cycles,
+                  engine_2_hours=excluded.engine_2_hours,
+                  engine_2_cycles=excluded.engine_2_cycles,
+                  updated_at=datetime('now')
+                """,
+                (aid, tc_norm["aircraft_hours"], tc_norm["aircraft_landings"], tc_norm["apu_hours"], tc_norm["apu_cycles"],
+                 tc_norm["engine_1_hours"], tc_norm["engine_1_cycles"], tc_norm["engine_2_hours"], tc_norm["engine_2_cycles"]),
+            )
+        # Ledger
+        det = {
+            "action": "CREATE",
+            "table": "mtr",
+            "mtr_id": mtr_id,
+            "values": {
+                "aircraft_id": aid,
+                "work_complete_date": wcd.isoformat(),
+                "aircraft_serial_no": serial,
+                "aircraft_reg_no": reg,
+                "work_complete_city": city,
+                "time_cycles": tc_norm,
+                "update_aircraft_time_cycles": upd_air_tc,
+            }
+        }
+        log_ledger(cur, "mtr", "CREATE", mtr_id, None, det, current_user)
+        con.commit()
+        return {"id": mtr_id}
+
+@app.get("/mtrs/{mtr_id}")
+def get_mtr_detail(mtr_id: int, current_user: Dict[str, Any] = Depends(require_user)):
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        items = cur.execute("SELECT * FROM mtr_item WHERE mtr_id=? ORDER BY id", (mtr_id,)).fetchall()
+        snap = cur.execute("SELECT * FROM mtr_time_cycles_snapshot WHERE mtr_id=?", (mtr_id,)).fetchone()
+        return {"mtr": dict(m), "items": [dict(r) for r in items], "time_cycles": dict(snap) if snap else None}
+
+@app.put("/mtrs/{mtr_id}")
+def update_mtr(mtr_id: int, payload: Dict[str, Any], current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        if m["status"] != "borrador":
+            raise HTTPException(status_code=400, detail="Solo se puede editar un MTR en borrador")
+        before = dict(m)
+        fields = {}
+        if "work_complete_date" in payload:
+            d = _parse_iso_date(payload.get("work_complete_date"))
+            _ensure_today_or_past(d, "work_complete_date")
+            fields["work_complete_date"] = d.isoformat()
+        for k in ["aircraft_serial_no","aircraft_reg_no"]:
+            if k in payload:
+                v = (payload.get(k) or "").strip()
+                if not v:
+                    raise HTTPException(status_code=400, detail=f"{k} requerido")
+                fields[k] = v
+        if "work_complete_city" in payload:
+            fields["work_complete_city"] = _validate_city(payload.get("work_complete_city"))
+        # Repair facility & inspection (opcionales en borrador)
+        for k in [
+            "repair_facility","facility_certificate","work_order_number","work_performed_by","performer_certificate_number","repair_date",
+            "additional_certification_statement","work_inspected_by","inspector_certificate_number","inspection_date"
+        ]:
+            if k in payload:
+                fields[k] = payload.get(k)
+        if fields:
+            sets = ", ".join([f"{k}=:{k}" for k in fields.keys()])
+            cur.execute(f"UPDATE mtr SET {sets}, updated_at=datetime('now') WHERE id=:id", {**fields, "id": mtr_id})
+        # Update snapshot TC si viene
+        if "time_cycles" in payload:
+            tc = payload.get("time_cycles") or {}
+            tc_norm = {
+                "aircraft_hours": _validate_tc(tc.get("aircraft_hours"), True),
+                "aircraft_landings": _validate_tc(tc.get("aircraft_landings"), False),
+                "apu_hours": _validate_tc(tc.get("apu_hours"), True),
+                "apu_cycles": _validate_tc(tc.get("apu_cycles"), False),
+                "engine_1_hours": _validate_tc(tc.get("engine_1_hours"), True),
+                "engine_1_cycles": _validate_tc(tc.get("engine_1_cycles"), False),
+                "engine_2_hours": _validate_tc(tc.get("engine_2_hours"), True),
+                "engine_2_cycles": _validate_tc(tc.get("engine_2_cycles"), False),
+            }
+            cur.execute(
+                """
+                UPDATE mtr_time_cycles_snapshot SET
+                  aircraft_hours=:aircraft_hours,
+                  aircraft_landings=:aircraft_landings,
+                  apu_hours=:apu_hours,
+                  apu_cycles=:apu_cycles,
+                  engine_1_hours=:engine_1_hours,
+                  engine_1_cycles=:engine_1_cycles,
+                  engine_2_hours=:engine_2_hours,
+                  engine_2_cycles=:engine_2_cycles
+                WHERE mtr_id=:mtr_id
+                """,
+                {**tc_norm, "mtr_id": mtr_id},
+            )
+            if payload.get("update_aircraft_time_cycles"):
+                cur.execute(
+                    """
+                    INSERT INTO aircraft_time_cycles(
+                      aircraft_id, aircraft_hours, aircraft_landings, apu_hours, apu_cycles,
+                      engine_1_hours, engine_1_cycles, engine_2_hours, engine_2_cycles, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?, datetime('now'))
+                    ON CONFLICT(aircraft_id) DO UPDATE SET
+                      aircraft_hours=excluded.aircraft_hours,
+                      aircraft_landings=excluded.aircraft_landings,
+                      apu_hours=excluded.apu_hours,
+                      apu_cycles=excluded.apu_cycles,
+                      engine_1_hours=excluded.engine_1_hours,
+                      engine_1_cycles=excluded.engine_1_cycles,
+                      engine_2_hours=excluded.engine_2_hours,
+                      engine_2_cycles=excluded.engine_2_cycles,
+                      updated_at=datetime('now')
+                    """,
+                    (m["aircraft_id"], tc_norm["aircraft_hours"], tc_norm["aircraft_landings"], tc_norm["apu_hours"], tc_norm["apu_cycles"],
+                     tc_norm["engine_1_hours"], tc_norm["engine_1_cycles"], tc_norm["engine_2_hours"], tc_norm["engine_2_cycles"]),
+                )
+        after = dict(cur.execute("SELECT * FROM mtr WHERE id=?", (mtr_id,)).fetchone())
+        changes = diff_rows(before, after)
+        if changes:
+            det = {"action":"UPDATE","table":"mtr","mtr_id": mtr_id, "diff": changes}
+            log_ledger(cur, "mtr", "UPDATE", mtr_id, None, det, current_user)
+        con.commit()
+        return {"id": mtr_id, "updated": list(fields.keys())}
+
+@app.get("/mtrs/{mtr_id}/items")
+def list_mtr_items(mtr_id: int, current_user: Dict[str, Any] = Depends(require_user)):
+    with connect() as con:
+        cur = con.cursor()
+        _get_mtr(cur, mtr_id)
+        rows = cur.execute("SELECT * FROM mtr_item WHERE mtr_id=? ORDER BY id", (mtr_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+@app.post("/mtrs/{mtr_id}/items")
+def add_mtr_item(mtr_id: int, payload: Dict[str, Any], current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    item_code = (payload.get("item_code") or "").strip()
+    description = (payload.get("description") or None)
+    maintenance_item_id = payload.get("maintenance_item_id")
+    if not item_code:
+        raise HTTPException(status_code=400, detail="item_code requerido")
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        if m["status"] != "borrador":
+            raise HTTPException(status_code=400, detail="Solo se puede editar un MTR en borrador")
+        # Validar item_code pertenece al avión
+        aid = m["aircraft_id"]
+        r = cur.execute(
+            "SELECT id FROM v_items_loaded WHERE aircraft_id=? AND item_code=? LIMIT 1",
+            (aid, item_code),
+        ).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="item_code no pertenece al avión o no está publicado")
+        try:
+            cur.execute(
+                "INSERT INTO mtr_item(mtr_id, item_code, description, maintenance_item_id) VALUES (?,?,?,?)",
+                (mtr_id, item_code, description, maintenance_item_id),
+            )
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=409, detail="Ítem ya agregado al MTR")
+        log_ledger(cur, "mtr_item", "INSERT", cur.lastrowid, None, {"mtr_id": mtr_id, "item_code": item_code}, current_user)
+        con.commit()
+        return {"id": cur.lastrowid}
+
+@app.put("/mtrs/{mtr_id}/items/{item_id}")
+def update_mtr_item(mtr_id: int, item_id: int, payload: Dict[str, Any], current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    desc = payload.get("description")
+    if desc is None:
+        raise HTTPException(status_code=400, detail="description requerido")
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        if m["status"] != "borrador":
+            raise HTTPException(status_code=400, detail="Solo se puede editar un MTR en borrador")
+        r = cur.execute("SELECT * FROM mtr_item WHERE id=? AND mtr_id=?", (item_id, mtr_id)).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Ítem no encontrado")
+        cur.execute("UPDATE mtr_item SET description=? WHERE id=?", (desc, item_id))
+        log_ledger(cur, "mtr_item", "UPDATE", item_id, None, {"mtr_id": mtr_id, "fields": ["description"]}, current_user)
+        con.commit()
+        return {"id": item_id}
+
+@app.delete("/mtrs/{mtr_id}/items/{item_id}")
+def delete_mtr_item(mtr_id: int, item_id: int, current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        if m["status"] != "borrador":
+            raise HTTPException(status_code=400, detail="Solo se puede editar un MTR en borrador")
+        r = cur.execute("SELECT id FROM mtr_item WHERE id=? AND mtr_id=?", (item_id, mtr_id)).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Ítem no encontrado")
+        cur.execute("DELETE FROM mtr_item WHERE id=?", (item_id,))
+        log_ledger(cur, "mtr_item", "UPDATE", item_id, None, {"mtr_id": mtr_id, "action": "DELETE"}, current_user)
+        con.commit()
+        return {"ok": True}
+
+@app.post("/mtrs/{mtr_id}/confirm-items")
+def confirm_mtr_items(mtr_id: int, current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        if m["status"] != "borrador":
+            raise HTTPException(status_code=400, detail="Solo se puede confirmar en borrador")
+        n = cur.execute("SELECT COUNT(*) AS n FROM mtr_item WHERE mtr_id=?", (mtr_id,)).fetchone()["n"]
+        if n <= 0:
+            raise HTTPException(status_code=400, detail="Debe agregar al menos un ítem")
+        cur.execute("UPDATE mtr SET items_confirmed_at=datetime('now') WHERE id=?", (mtr_id,))
+        log_ledger(cur, "mtr", "UPDATE", mtr_id, None, {"action": "CONFIRM_ITEMS"}, current_user)
+        con.commit()
+        return {"ok": True}
+
+@app.post("/mtrs/{mtr_id}/submit")
+def submit_mtr(mtr_id: int, current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        if m["status"] != "borrador":
+            raise HTTPException(status_code=400, detail="MTR ya enviado")
+        # Validar snapshots y secciones
+        snap = cur.execute("SELECT * FROM mtr_time_cycles_snapshot WHERE mtr_id=?", (mtr_id,)).fetchone()
+        if not snap:
+            raise HTTPException(status_code=400, detail="Falta snapshot de TIME & CYCLES")
+        # Ítems y descripciones
+        bad = cur.execute("SELECT COUNT(*) AS n FROM mtr_item WHERE mtr_id=? AND (description IS NULL OR TRIM(description)='')", (mtr_id,)).fetchone()["n"]
+        total = cur.execute("SELECT COUNT(*) AS n FROM mtr_item WHERE mtr_id=?", (mtr_id,)).fetchone()["n"]
+        if total <= 0 or bad > 0:
+            raise HTTPException(status_code=400, detail="Todos los ítems deben tener descripción y existir al menos uno")
+        # Campos requeridos finales
+        for k in ["work_complete_date", "aircraft_serial_no", "aircraft_reg_no", "work_complete_city"]:
+            if not (m[k]):
+                raise HTTPException(status_code=400, detail=f"Campo requerido faltante: {k}")
+        # Validar fechas finales
+        for fld in ["work_complete_date", "repair_date", "inspection_date"]:
+            d = _parse_iso_date(m[fld]) if m[fld] else None
+            if fld != "repair_date" and not d:
+                raise HTTPException(status_code=400, detail=f"{fld} requerido en formato YYYY-MM-DD")
+            if d and d > date.today():
+                raise HTTPException(status_code=400, detail=f"{fld} no puede ser futuro")
+        # REPAIR FACILITY e INSPECTION requeridos para enviar
+        for k in [
+            "repair_facility","facility_certificate","work_order_number","work_performed_by","performer_certificate_number",
+            "work_inspected_by","inspector_certificate_number"
+        ]:
+            if not (m[k] and str(m[k]).strip()):
+                raise HTTPException(status_code=400, detail=f"Campo requerido faltante: {k}")
+        cur.execute("UPDATE mtr SET status='enviado', submitted_at=datetime('now') WHERE id=?", (mtr_id,))
+        log_ledger(cur, "mtr", "UPDATE", mtr_id, None, {"action": "SUBMIT"}, current_user)
+        con.commit()
+        return {"id": mtr_id, "status": "enviado"}

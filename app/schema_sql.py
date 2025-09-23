@@ -174,4 +174,99 @@ SELECT mi.*
 FROM maintenance_item mi
 JOIN import_batch b ON b.id = mi.import_batch_id
 WHERE b.status = 'loaded';
+ 
+-- ===================== MTRs (Maintenance/Technical Report) =====================
+
+-- Estado actual de TIME & CYCLES por aeronave (no histórico)
+CREATE TABLE IF NOT EXISTS aircraft_time_cycles (
+    aircraft_id INTEGER PRIMARY KEY,
+    aircraft_hours REAL CHECK (aircraft_hours IS NULL OR aircraft_hours >= 0),
+    aircraft_landings INTEGER CHECK (aircraft_landings IS NULL OR aircraft_landings >= 0),
+    apu_hours REAL CHECK (apu_hours IS NULL OR apu_hours >= 0),
+    apu_cycles INTEGER CHECK (apu_cycles IS NULL OR apu_cycles >= 0),
+    engine_1_hours REAL CHECK (engine_1_hours IS NULL OR engine_1_hours >= 0),
+    engine_1_cycles INTEGER CHECK (engine_1_cycles IS NULL OR engine_1_cycles >= 0),
+    engine_2_hours REAL CHECK (engine_2_hours IS NULL OR engine_2_hours >= 0),
+    engine_2_cycles INTEGER CHECK (engine_2_cycles IS NULL OR engine_2_cycles >= 0),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(aircraft_id) REFERENCES aircraft(id) ON DELETE CASCADE
+);
+
+-- Maestro MTR
+CREATE TABLE IF NOT EXISTS mtr (
+    id INTEGER PRIMARY KEY,
+    aircraft_id INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('borrador','enviado')) DEFAULT 'borrador',
+    work_complete_date TEXT NOT NULL,
+    aircraft_serial_no TEXT NOT NULL,
+    aircraft_reg_no TEXT NOT NULL,
+    work_complete_city TEXT NOT NULL,
+    items_confirmed_at TEXT,
+    -- REPAIR FACILITY
+    repair_facility TEXT,
+    facility_certificate TEXT,
+    work_order_number TEXT,
+    work_performed_by TEXT,
+    performer_certificate_number TEXT,
+    repair_date TEXT,
+    -- INSPECTION
+    additional_certification_statement TEXT,
+    work_inspected_by TEXT,
+    inspector_certificate_number TEXT,
+    inspection_date TEXT,
+    created_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT,
+    submitted_at TEXT,
+    FOREIGN KEY (aircraft_id) REFERENCES aircraft(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Snapshot de TIME & CYCLES usado por el MTR
+CREATE TABLE IF NOT EXISTS mtr_time_cycles_snapshot (
+    id INTEGER PRIMARY KEY,
+    mtr_id INTEGER NOT NULL UNIQUE,
+    aircraft_hours REAL,
+    aircraft_landings INTEGER,
+    apu_hours REAL,
+    apu_cycles INTEGER,
+    engine_1_hours REAL,
+    engine_1_cycles INTEGER,
+    engine_2_hours REAL,
+    engine_2_cycles INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (mtr_id) REFERENCES mtr(id) ON DELETE CASCADE
+);
+
+-- Ítems asociados al MTR
+CREATE TABLE IF NOT EXISTS mtr_item (
+    id INTEGER PRIMARY KEY,
+    mtr_id INTEGER NOT NULL,
+    item_code TEXT NOT NULL,
+    description TEXT,
+    maintenance_item_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (mtr_id) REFERENCES mtr(id) ON DELETE CASCADE,
+    FOREIGN KEY (maintenance_item_id) REFERENCES maintenance_item(id) ON DELETE SET NULL,
+    UNIQUE(mtr_id, item_code)
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_mtr_aircraft ON mtr(aircraft_id);
+CREATE INDEX IF NOT EXISTS idx_mtr_status ON mtr(status);
+CREATE INDEX IF NOT EXISTS idx_mtr_item_mtr ON mtr_item(mtr_id);
+
+-- Vista para listado de MTRs
+CREATE VIEW IF NOT EXISTS v_mtr_list AS
+SELECT 
+  m.id,
+  m.aircraft_id,
+  a.name AS aircraft_name,
+  a.model AS aircraft_model,
+  m.work_complete_city,
+  m.status,
+  m.work_complete_date AS date,
+  (SELECT COUNT(*) FROM mtr_item mi WHERE mi.mtr_id = m.id) AS numero_de_items
+FROM mtr m
+JOIN aircraft a ON a.id = m.aircraft_id;
 ''';
