@@ -160,6 +160,15 @@ def index():
 def create_aircraft(
     name: str = Form(...),
     model: str = Form("N/A"),
+    # TIME & CYCLES (opcionales, sugeridos por UI)
+    aircraft_hours: Optional[float] = Form(None),
+    aircraft_landings: Optional[int] = Form(None),
+    apu_hours: Optional[float] = Form(None),
+    apu_cycles: Optional[int] = Form(None),
+    engine_1_hours: Optional[float] = Form(None),
+    engine_1_cycles: Optional[int] = Form(None),
+    engine_2_hours: Optional[float] = Form(None),
+    engine_2_cycles: Optional[int] = Form(None),
     current_user: Dict[str, Any] = Depends(require_role("admin")),
 ):
     name = name.strip()
@@ -170,6 +179,47 @@ def create_aircraft(
         cur = con.cursor()
         cur.execute("INSERT INTO aircraft(name, model) VALUES (?,?)", (name, model))
         aircraft_id = cur.lastrowid
+        # Guardar TIME & CYCLES si fueron provistos
+        def _nn(x):
+            return x if x is None else (float(x) if isinstance(x, (int, float, str)) else None)
+        tc_vals = {
+            "aircraft_hours": aircraft_hours,
+            "aircraft_landings": aircraft_landings,
+            "apu_hours": apu_hours,
+            "apu_cycles": apu_cycles,
+            "engine_1_hours": engine_1_hours,
+            "engine_1_cycles": engine_1_cycles,
+            "engine_2_hours": engine_2_hours,
+            "engine_2_cycles": engine_2_cycles,
+        }
+        # Validaciones básicas (no negativos)
+        for k, v in list(tc_vals.items()):
+            if v is None:
+                continue
+            try:
+                if k.endswith("_hours"):
+                    v2 = float(v)
+                else:
+                    v2 = int(v)
+                if v2 < 0:
+                    raise ValueError
+                tc_vals[k] = v2
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"{k} inválido (no negativo)")
+        if any(v is not None for v in tc_vals.values()):
+            cur.execute(
+                """
+                INSERT INTO aircraft_time_cycles(
+                    aircraft_id, aircraft_hours, aircraft_landings, apu_hours, apu_cycles,
+                    engine_1_hours, engine_1_cycles, engine_2_hours, engine_2_cycles, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?, datetime('now'))
+                """,
+                (
+                    aircraft_id,
+                    tc_vals["aircraft_hours"], tc_vals["aircraft_landings"], tc_vals["apu_hours"], tc_vals["apu_cycles"],
+                    tc_vals["engine_1_hours"], tc_vals["engine_1_cycles"], tc_vals["engine_2_hours"], tc_vals["engine_2_cycles"],
+                ),
+            )
         # Ledger: creación de avión
         details = {
             "action": "CREATE",
@@ -621,6 +671,63 @@ def get_aircraft_time_cycles(aircraft_id: int, current_user: Dict[str, Any] = De
         ).fetchone()
         return dict(r) if r else None
 
+@app.put("/aircraft/{aircraft_id}/time-cycles")
+def set_aircraft_time_cycles(
+    aircraft_id: int,
+    payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(require_role("admin")),
+):
+    def _nonneg(name: str, val: Any, allow_float: bool):
+        if val is None or val == "":
+            return None
+        try:
+            x = float(val) if allow_float else int(val)
+            if x < 0:
+                raise ValueError
+            return x
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"{name} inválido (no negativo)")
+
+    with connect() as con:
+        cur = con.cursor()
+        a = cur.execute("SELECT id FROM aircraft WHERE id=?", (aircraft_id,)).fetchone()
+        if not a:
+            raise HTTPException(status_code=404, detail="Aircraft no encontrado")
+        vals = {
+            "aircraft_hours": _nonneg("aircraft_hours", payload.get("aircraft_hours"), True),
+            "aircraft_landings": _nonneg("aircraft_landings", payload.get("aircraft_landings"), False),
+            "apu_hours": _nonneg("apu_hours", payload.get("apu_hours"), True),
+            "apu_cycles": _nonneg("apu_cycles", payload.get("apu_cycles"), False),
+            "engine_1_hours": _nonneg("engine_1_hours", payload.get("engine_1_hours"), True),
+            "engine_1_cycles": _nonneg("engine_1_cycles", payload.get("engine_1_cycles"), False),
+            "engine_2_hours": _nonneg("engine_2_hours", payload.get("engine_2_hours"), True),
+            "engine_2_cycles": _nonneg("engine_2_cycles", payload.get("engine_2_cycles"), False),
+        }
+        cur.execute(
+            """
+            INSERT INTO aircraft_time_cycles(
+              aircraft_id, aircraft_hours, aircraft_landings, apu_hours, apu_cycles,
+              engine_1_hours, engine_1_cycles, engine_2_hours, engine_2_cycles, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?, datetime('now'))
+            ON CONFLICT(aircraft_id) DO UPDATE SET
+              aircraft_hours=excluded.aircraft_hours,
+              aircraft_landings=excluded.aircraft_landings,
+              apu_hours=excluded.apu_hours,
+              apu_cycles=excluded.apu_cycles,
+              engine_1_hours=excluded.engine_1_hours,
+              engine_1_cycles=excluded.engine_1_cycles,
+              engine_2_hours=excluded.engine_2_hours,
+              engine_2_cycles=excluded.engine_2_cycles,
+              updated_at=datetime('now')
+            """,
+            (aircraft_id, vals["aircraft_hours"], vals["aircraft_landings"], vals["apu_hours"], vals["apu_cycles"],
+             vals["engine_1_hours"], vals["engine_1_cycles"], vals["engine_2_hours"], vals["engine_2_cycles"]),
+        )
+        # Ledger opcional
+        log_ledger(cur, "aircraft", "UPDATE", aircraft_id, None, {"action":"SET_TIME_CYCLES","values": vals}, current_user)
+        con.commit()
+        return {"ok": True}
+
 @app.post("/mtrs")
 def create_mtr(payload: Dict[str, Any], current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
     aid = payload.get("aircraft_id")
@@ -931,3 +1038,15 @@ def submit_mtr(mtr_id: int, current_user: Dict[str, Any] = Depends(require_role(
         log_ledger(cur, "mtr", "UPDATE", mtr_id, None, {"action": "SUBMIT"}, current_user)
         con.commit()
         return {"id": mtr_id, "status": "enviado"}
+
+@app.delete("/mtrs/{mtr_id}")
+def delete_mtr(mtr_id: int, current_user: Dict[str, Any] = Depends(require_role("admin", "mechanic"))):
+    with connect() as con:
+        cur = con.cursor()
+        m = _get_mtr(cur, mtr_id)
+        if m["status"] != "borrador":
+            raise HTTPException(status_code=400, detail="Solo se puede borrar un MTR en borrador")
+        cur.execute("DELETE FROM mtr WHERE id=?", (mtr_id,))
+        log_ledger(cur, "mtr", "UPDATE", mtr_id, None, {"action": "DELETE"}, current_user)
+        con.commit()
+        return {"ok": True}

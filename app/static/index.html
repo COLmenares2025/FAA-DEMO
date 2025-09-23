@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
@@ -37,9 +37,8 @@
     <div class="brand"><img src="/static/logo.png" alt="" class="brand-logo"> Air Audit</div>
     <nav>
       <a id="navWelcome" href="#/welcome">Inicio</a>
-      <a id="navItems" href="#/aircraft/0/items" class="disabled">Ítems</a>
-      <a id="navEdit" href="#/aircraft/0/items/new" class="disabled">Agregar</a>
-      <a id="navAudit" href="#/aircraft/0/audit" class="disabled">Historial</a>
+      <a id="navItems" href="#/aircraft/0/items" class="disabled">Ãtems</a>
+            <a id="navAudit" href="#/aircraft/0/audit" class="disabled">Historial</a>
       <a id="navMTRs" href="#/mtrs" class="disabled">MTRs</a>
     </nav>
     <div class="row hidden" id="userBox">
@@ -52,7 +51,7 @@
   </header>
 
   <section id="screenLogin">
-    <h2>Iniciar sesión</h2>
+    <h2>Iniciar sesiÃ³n</h2>
     <p class="muted small">Ingresa tus credenciales para continuar.</p>
     <form class="list" id="loginForm" onsubmit="login(event)" style="max-width:320px;">
       <div>
@@ -60,7 +59,7 @@
         <input id="loginUser" autocomplete="username" />
       </div>
       <div>
-        <label for="loginPass">Contraseña</label>
+        <label for="loginPass">ContraseÃ±a</label>
         <input id="loginPass" type="password" autocomplete="current-password" />
       </div>
       <div>
@@ -90,10 +89,10 @@
 
   <!-- Screen: Welcome -->
   <section id="screenWelcome" class="hidden">
-    <h2>Bienvenido al servicio de auditoría de aviones</h2>
+    <h2>Bienvenido al servicio de auditorÃ­a de aviones</h2>
     <div class="toolbar">
       <div class="row">
-        <input id="filterAircraft" placeholder="Buscar avión por nombre..." />
+        <input id="filterAircraft" placeholder="Buscar aviÃ³n por nombre..." />
         <button onclick="renderAircraftGrid()">Buscar</button>
         <label class="small" style="margin-left:8px;">
           <input type="checkbox" id="showArchived" onchange="ensureAircrafts().then(renderAircraftGrid)"> Mostrar archivados
@@ -101,9 +100,21 @@
       </div>
       
       <div class="row" id="rowNewAircraft">
-        <input id="newAircraftName" placeholder="Nombre del avión" />
+        <input id="newAircraftName" placeholder="Nombre del aviÃ³n" />
         <input id="newAircraftModel" placeholder="Modelo (opcional)" />
-        <button onclick="createAircraft()">Agregar avión</button>
+        <button onclick="createAircraft()">Agregar aviÃ³n</button>
+      </div>      <div class="list" style="margin-top:8px;">
+        <b>TIME & CYCLES del avión (requeridos)</b>
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));">
+          <div><label>Aircraft Hours</label><input id="newTC_aircraft_hours" type="number" step="0.1" min="0" /></div>
+          <div><label>Aircraft Landings</label><input id="newTC_aircraft_landings" type="number" step="1" min="0" /></div>
+          <div><label>APU Hours</label><input id="newTC_apu_hours" type="number" step="0.1" min="0" /></div>
+          <div><label>APU Cycles</label><input id="newTC_apu_cycles" type="number" step="1" min="0" /></div>
+          <div><label>Engine 1 Hours</label><input id="newTC_engine_1_hours" type="number" step="0.1" min="0" /></div>
+          <div><label>Engine 1 Cycles</label><input id="newTC_engine_1_cycles" type="number" step="1" min="0" /></div>
+          <div><label>Engine 2 Hours</label><input id="newTC_engine_2_hours" type="number" step="0.1" min="0" /></div>
+          <div><label>Engine 2 Cycles</label><input id="newTC_engine_2_cycles" type="number" step="1" min="0" /></div>
+        </div>
       </div>
     </div>
     <div id="aircraftGrid" class="grid"></div>
@@ -111,10 +122,11 @@
 
   <!-- Screen: Items -->
   <section id="screenItems" class="hidden">
-    <h2>Ítems publicados</h2>
+    <h2>Ãtems publicados</h2>
     <div class="toolbar">
       <div class="row">
-        <input id="searchItems" placeholder="Buscar por descripción o código..." />
+        <select id="aircraftSelect" onchange="onAircraftChange()"></select>
+        <input id="searchItems" placeholder="Buscar por descripciA3n o cA3digo..." />
         <select id="pageSize" onchange="loadItems()">
           <option>50</option>
           <option>100</option>
@@ -125,13 +137,14 @@
       </div>
       <div class="row">
         <button id="btnImportCsv" onclick="toggleImport()">Importar CSV</button>
-        <button id="btnAddItem" onclick="goNew()">+ Agregar ítem</button>
+        <button id="btnAddItem" onclick="goNew()">+ Agregar Ã­tem</button>
       </div>
     </div>
+    <div id="tcInfo" class="small muted" style="margin:6px 0 10px 0;"></div>
     <div id="importPanel" class="hidden" style="border:1px solid var(--bd); border-radius:8px; padding:12px; margin-top:8px;">
       <div class="row" style="justify-content:space-between; align-items:center;">
-        <div class="small"><b>Importar desde CSV</b> (los válidos se publican; duplicados a cuarentena)</div>
-        <div><span class="link" onclick="toggleImport()">Cerrar ✕</span></div>
+        <div class="small"><b>Importar desde CSV</b> (los vÃ¡lidos se publican; duplicados a cuarentena)</div>
+        <div><span class="link" onclick="toggleImport()">Cerrar âœ•</span></div>
       </div>
       <div class="row" style="margin-top:8px;">
         <input id="csvFile" type="file" accept=".csv,text/csv" />
@@ -144,22 +157,22 @@
       <pre id="importResult" class="small" style="background:#f9fafb; border:1px solid var(--bd); border-radius:8px; padding:8px; margin-top:8px;"></pre>
     </div>
     <div class="row">
-      <button onclick="prevPage()">◀ Anterior</button>
+      <button onclick="prevPage()">â—€ Anterior</button>
       <div id="pageInfo" class="small muted"></div>
-      <button onclick="nextPage()">Siguiente ▶</button>
+      <button onclick="nextPage()">Siguiente â–¶</button>
     </div>
     <div id="itemsList" class="list" style="margin-top:10px;"></div>
   </section>
 
   <!-- Screen: Edit/New -->
   <section id="screenEdit" class="hidden">
-    <h2 id="editTitle">Editar ítem</h2>
-    <div class="small"><span class="link" onclick="goItems()">← Volver a Ítems</span></div>
+    <h2 id="editTitle">Editar Ã­tem</h2>
+    <div class="small"><span class="link" onclick="goItems()">â† Volver a Ãtems</span></div>
     <div id="warnBox" class="small warn"></div>
     <div class="grid" style="grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); margin-top:10px;">
-      <div><label>Código</label><br><input id="f_item_code"></div>
-      <div><label>Posición</label><br><input id="f_position"></div>
-      <div><label>Descripción *</label><br><input id="f_description"></div>
+      <div><label>CÃ³digo</label><br><input id="f_item_code"></div>
+      <div><label>PosiciÃ³n</label><br><input id="f_position"></div>
+      <div><label>DescripciÃ³n *</label><br><input id="f_description"></div>
       <div><label>Tipo</label><br><input id="f_type" placeholder="sbsl/comp/ad/insp"></div>
       <div><label>Interval (months)</label><br><input id="f_interval_months" type="number" min="0"></div>
       <div><label>Interval (hours)</label><br><input id="f_interval_hours" type="number" min="0"></div>
@@ -183,7 +196,7 @@
   </section>
 
   <section id="screenAudit" class="hidden">
-    <h2>Historial del avión</h2>
+    <h2>Historial del aviÃ³n</h2>
     <div class="toolbar">
       <div class="row">
         <label class="small">
@@ -191,9 +204,9 @@
         </label>
       </div>
       <div class="row">
-        <button onclick="prevAuditPage()">◀ Anterior</button>
+        <button onclick="prevAuditPage()">â—€ Anterior</button>
         <div id="auditPageInfo" class="small muted"></div>
-        <button onclick="nextAuditPage()">Siguiente ▶</button>
+        <button onclick="nextAuditPage()">Siguiente â–¶</button>
       </div>
     </div>
     <div id="auditList" class="list"></div>
@@ -202,7 +215,7 @@
 <script>
 const ROLE_LABELS = {
   admin: "Administrador",
-  mechanic: "Mecánico",
+  mechanic: "MecÃ¡nico",
   auditor: "Auditor",
 };
 
@@ -231,7 +244,7 @@ function show(screenId){
 }
 
 function setActive(tab){
-  ["navWelcome","navItems","navEdit","navAudit","navMTRs"].forEach(id => el(id)?.classList.remove("active"));
+  ["navWelcome","navItems","navAudit","navMTRs"].forEach(id => el(id)?.classList.remove("active"));
   el(tab)?.classList.add("active");
 }
 
@@ -270,8 +283,7 @@ function refreshRoleUI(){
   if (importBtn){ importBtn.classList.toggle("hidden", !canImport()); }
   const addBtn = el("btnAddItem");
   if (addBtn){ addBtn.classList.toggle("hidden", !canCreateItems()); }
-  const navEdit = el("navEdit");
-  if (navEdit){ navEdit.classList.toggle("hidden", !canCreateItems()); }
+  // navEdit removido (botón en Items)
   const navItems = el("navItems");
   if (navItems){ navItems.classList.toggle("hidden", !logged); }
   const navAudit = el("navAudit");
@@ -294,7 +306,7 @@ function refreshRoleUI(){
 function setSession(token, user, expiresAt){
   state.currentUser = user ? {...user} : null;
   state.sessionExpiresAt = expiresAt || null;
-  // Ya no persistimos token en localStorage; cookie httpOnly maneja la sesión
+  // Ya no persistimos token en localStorage; cookie httpOnly maneja la sesiÃ³n
   if (user){ localStorage.setItem("currentUser", JSON.stringify(user)); }
   refreshRoleUI();
 }
@@ -341,7 +353,7 @@ async function restoreSession(){
 async function api(path, opts={}){
   const { skipAuth, ...fetchOpts } = opts;
   const headers = new Headers(fetchOpts.headers || {});
-  // Autenticación por cookie httpOnly; no agregamos Authorization
+  // AutenticaciÃ³n por cookie httpOnly; no agregamos Authorization
   fetchOpts.headers = headers;
   fetchOpts.credentials = 'include';
   const response = await fetch(path, fetchOpts);
@@ -354,7 +366,7 @@ async function api(path, opts={}){
     data = await response.text();
   }
   if (response.status === 401 && !skipAuth){
-    clearSession('Tu sesión expiró. Ingresa nuevamente.');
+    clearSession('Tu sesiÃ³n expirÃ³. Ingresa nuevamente.');
   }
   if (!response.ok){
     let detail = null;
@@ -370,7 +382,7 @@ async function login(ev){
   const username = (el('loginUser').value || '').trim();
   const password = el('loginPass').value || '';
   if (!username || !password){
-    el('loginError').innerText = 'Usuario y contraseña requeridos';
+    el('loginError').innerText = 'Usuario y contraseÃ±a requeridos';
     return;
   }
   try {
@@ -388,7 +400,7 @@ async function login(ev){
     await ensureAircrafts();
     router();
   } catch (err){
-    el('loginError').innerText = err.message || 'No se pudo iniciar sesión';
+    el('loginError').innerText = err.message || 'No se pudo iniciar sesiÃ³n';
   }
 }
 
@@ -423,34 +435,35 @@ async function router(){
     setSelectedAircraftId(aid || fallbackId);
     if (parts.length >= 4 && parts[3] === 'new'){
       if (!canCreateItems()){
-        alert('No tienes permiso para agregar ítems.');
+        alert('No tienes permiso para agregar Ã­tems.');
         location.hash = `#/aircraft/${getSelectedAircraftId()}/items`;
         return;
       }
-      setActive('navEdit');
+      setActive('navItems');
       show('screenEdit');
       state.editingItemId = null;
       clearForm();
-      el('editTitle').innerText = 'Nuevo ítem';
+      el('editTitle').innerText = 'Nuevo Ã­tem';
       return;
     }
     if (parts.length >= 5 && parts[4] === 'edit'){
       if (!canEditItems()){
-        alert('No tienes permiso para editar ítems.');
+        alert('No tienes permiso para editar Ã­tems.');
         location.hash = `#/aircraft/${getSelectedAircraftId()}/items`;
         return;
       }
       const itemId = parseInt(parts[3] || '0');
-      setActive('navEdit');
+      setActive('navItems');
       show('screenEdit');
       state.editingItemId = itemId;
-      el('editTitle').innerText = 'Editar ítem #' + itemId;
+      el('editTitle').innerText = 'Editar Ã­tem #' + itemId;
       await loadItem(itemId);
       return;
     }
     setActive('navItems');
     show('screenItems');
     await loadItems();
+    await updateTCInfo();
     if (localStorage.getItem('openImport') === '1'){
       state.showImportPanel = true;
       localStorage.removeItem('openImport');
@@ -523,12 +536,11 @@ async function ensureAircrafts(){
 
 function updateNavLinks(){
   if (!state.currentUser){
-    ['navWelcome','navItems','navEdit','navAudit','navMTRs'].forEach(id => el(id)?.classList.add('disabled'));
+    ['navWelcome','navItems','navAudit','navMTRs'].forEach(id => el(id)?.classList.add('disabled'));
     return;
   }
   const aid = getSelectedAircraftId() || 0;
   const items = el('navItems');
-  const edit  = el('navEdit');
   const audit = el('navAudit');
   const mtrs  = el('navMTRs');
   // Asegurar que "Inicio" queda habilitado tras autenticarse
@@ -541,16 +553,12 @@ function updateNavLinks(){
   if (aid){
     items?.classList.remove('disabled');
     audit?.classList.remove('disabled');
-    if (canCreateItems()){ edit?.classList.remove('disabled'); }
     items && (items.href = `#/aircraft/${aid}/items`);
-    edit && (edit.href  = `#/aircraft/${aid}/items/new`);
     audit && (audit.href = `#/aircraft/${aid}/audit`);
   } else {
     items?.classList.add('disabled');
-    edit?.classList.add('disabled');
     audit?.classList.add('disabled');
     if (items) items.href = '#/aircraft/0/items';
-    if (edit) edit.href  = '#/aircraft/0/items/new';
     if (audit) audit.href = '#/aircraft/0/audit';
   }
 }
@@ -581,6 +589,9 @@ function onAircraftChange(){
     } else {
       location.hash = `#/aircraft/${id}/items`;
     }
+    updateNavLinks();
+    loadItems();
+    updateTCInfo();
   } else if (parts[0] === 'aircraft' && parts[2] === 'audit'){
     location.hash = `#/aircraft/${id}/audit`;
   } else {
@@ -609,7 +620,7 @@ function renderAircraftGrid(){
         <div class="small muted">Creado: ${a.created_at}</div>
         ${archived ? `<div class="small warn">Archivado: ${a.archived_at || ''}</div>` : ''}
         <div style="margin-top:8px; display:flex; gap:14px; flex-wrap:wrap;">
-          <a class="link" href="#/aircraft/${a.id}/items">Ver ítems</a>
+          <a class="link" href="#/aircraft/${a.id}/items">Ver Ã­tems</a>
           ${importLink}
           ${actions}
         </div>
@@ -628,24 +639,38 @@ async function createAircraft(){
   fd.append('model', model || 'N/A');
   try {
     const res = await api('/aircraft', { method: 'POST', body: fd });
+    // Enviar TIME & CYCLES
+    try {
+      const body = {
+        aircraft_hours: el('newTC_aircraft_hours')?.value,
+        aircraft_landings: el('newTC_aircraft_landings')?.value,
+        apu_hours: el('newTC_apu_hours')?.value,
+        apu_cycles: el('newTC_apu_cycles')?.value,
+        engine_1_hours: el('newTC_engine_1_hours')?.value,
+        engine_1_cycles: el('newTC_engine_1_cycles')?.value,
+        engine_2_hours: el('newTC_engine_2_hours')?.value,
+        engine_2_cycles: el('newTC_engine_2_cycles')?.value,
+      };
+      await api(`/aircraft/${res.id}/time-cycles`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    } catch(_){}
     el('newAircraftName').value = '';
     el('newAircraftModel').value = '';
     await ensureAircrafts();
     renderAircraftGrid();
-    const importar = confirm(`Avión creado (#${res.id}). ¿Quieres importar un CSV ahora?`);
+    const importar = confirm(`AviÃ³n creado (#${res.id}). Â¿Quieres importar un CSV ahora?`);
     if (importar){
       setSelectedAircraftId(res.id);
       state.showImportPanel = true;
       location.hash = `#/aircraft/${res.id}/items`;
     }
   } catch(err){
-    alert('Error al crear avión: ' + err.message);
+    alert('Error al crear aviÃ³n: ' + err.message);
   }
 }
 
 async function archiveAircraft(aid){
   if (!canManageAircraft()){ alert('No tienes permiso para archivar.'); return; }
-  if (!confirm('¿Archivar este avión? Podrás restaurarlo luego.')) return;
+  if (!confirm('Â¿Archivar este aviÃ³n? PodrÃ¡s restaurarlo luego.')) return;
   try {
     await api(`/aircraft/${aid}/archive`, { method:'POST' });
     await ensureAircrafts();
@@ -665,14 +690,14 @@ async function restoreAircraft(aid){
 function goItemsFor(aid){ location.hash = `#/aircraft/${aid}/items`; }
 function goItems(){ const aid = getSelectedAircraftId(); location.hash = `#/aircraft/${aid}/items`; }
 function goNew(){
-  if (!canCreateItems()){ alert('No tienes permiso para agregar ítems.'); return; }
+  if (!canCreateItems()){ alert('No tienes permiso para agregar Ã­tems.'); return; }
   const aid = getSelectedAircraftId();
   location.hash = `#/aircraft/${aid}/items/new`;
 }
 
 async function loadItems(){
   const aid = getSelectedAircraftId();
-  if (!aid){ alert('Selecciona un avión'); return; }
+  if (!aid){ alert('Selecciona un aviÃ³n'); return; }
   state.pageSize = parseInt(el('pageSize').value || '50');
   const search = el('searchItems').value || '';
   const offset = (state.page-1) * state.pageSize;
@@ -685,24 +710,24 @@ async function loadItems(){
     state.items = items;
     state.total = count.count;
   } catch(err){
-    if (err?.message){ alert('No se pudieron cargar los ítems: ' + err.message); }
+    if (err?.message){ alert('No se pudieron cargar los Ã­tems: ' + err.message); }
     return;
   }
   const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize));
-  el('pageInfo').innerText = `Página ${state.page} de ${totalPages} • Total: ${state.total}`;
+  el('pageInfo').innerText = `PÃ¡gina ${state.page} de ${totalPages} â€¢ Total: ${state.total}`;
   const list = el('itemsList');
   if (state.items.length === 0){
     list.innerHTML = '<div class="muted">Sin resultados.</div>';
     return;
   }
   list.innerHTML = state.items.map(r => {
-    const editLink = canEditItems() ? `<a class="link" href="#/aircraft/${getSelectedAircraftId()}/items/${r.id}/edit">✏️ Editar</a>` : '';
+    const editLink = canEditItems() ? `<a class="link" href="#/aircraft/${getSelectedAircraftId()}/items/${r.id}/edit">âœï¸ Editar</a>` : '';
     return `
       <div class="item">
         <div>
-          <div><b>${escapeHtml(r.description || '(sin descripción)')}</b></div>
-          <div class="small muted">${escapeHtml(r.item_code || '')} • ${escapeHtml(r.position || '')} • ${escapeHtml(r.type || '')}</div>
-          <div class="small">DueH: ${r.due_next_hours ?? ''} • DueL: ${r.due_next_landings ?? ''} • DueD: ${r.due_next_date ?? ''}</div>
+          <div><b>${escapeHtml(r.description || '(sin descripciÃ³n)')}</b></div>
+          <div class="small muted">${escapeHtml(r.item_code || '')} â€¢ ${escapeHtml(r.position || '')} â€¢ ${escapeHtml(r.type || '')}</div>
+          <div class="small">DueH: ${r.due_next_hours ?? ''} â€¢ DueL: ${r.due_next_landings ?? ''} â€¢ DueD: ${r.due_next_date ?? ''}</div>
           <div class="small muted">#${r.id}</div>
         </div>
         ${editLink}
@@ -725,6 +750,19 @@ function renderImportPanel(){
   }
 }
 
+async function updateTCInfo(){
+  const aid = getSelectedAircraftId();
+  const box = el('tcInfo');
+  if (!aid || !box){ return; }
+  try {
+    const tc = await api(`/aircraft/${aid}/time-cycles`);
+    if (!tc){ box.innerHTML = '<span class="muted">TIME & CYCLES no registrados para este avión.</span>'; return; }
+    box.innerHTML = `TIME & CYCLES — AH:${tc.aircraft_hours ?? ''} · AL:${tc.aircraft_landings ?? ''} · APUH:${tc.apu_hours ?? ''} · APUC:${tc.apu_cycles ?? ''} · E1H:${tc.engine_1_hours ?? ''} · E1C:${tc.engine_1_cycles ?? ''} · E2H:${tc.engine_2_hours ?? ''} · E2C:${tc.engine_2_cycles ?? ''} (act: ${tc.updated_at || ''})`;
+  } catch(_) {
+    if (box) box.innerHTML = '';
+  }
+}
+
 function toggleImport(){
   if (!canImport()){ alert('No tienes permiso para importar.'); return; }
   state.showImportPanel = !state.showImportPanel;
@@ -736,7 +774,7 @@ async function importCSV(){
   const aid = getSelectedAircraftId();
   const f = el('csvFile').files[0];
   const mode = el('publishMode').value || 'quarantine';
-  if (!aid){ alert('Selecciona un avión'); return; }
+  if (!aid){ alert('Selecciona un aviÃ³n'); return; }
   if (!f){ alert('Selecciona un archivo CSV'); return; }
   const fd = new FormData();
   fd.append('file', f);
@@ -774,10 +812,10 @@ async function loadItem(id){
     const r = await api(`/items/${id}`);
     setForm(r);
     if (r.due_next_date && r.last_completed_date && r.due_next_date < r.last_completed_date){
-      el('warnBox').innerText = '⚠️ El vencimiento es anterior a la última finalización. Revisa si es correcto.';
+      el('warnBox').innerText = 'âš ï¸ El vencimiento es anterior a la Ãºltima finalizaciÃ³n. Revisa si es correcto.';
     }
   } catch(err){
-    alert('No se pudo cargar el ítem: ' + err.message);
+    alert('No se pudo cargar el Ã­tem: ' + err.message);
   }
 }
 
@@ -828,18 +866,18 @@ function getForm(){
 }
 
 async function saveItem(){
-  if (state.editingItemId && !canEditItems()){ alert('No tienes permiso para editar ítems.'); return; }
-  if (!state.editingItemId && !canCreateItems()){ alert('No tienes permiso para crear ítems.'); return; }
+  if (state.editingItemId && !canEditItems()){ alert('No tienes permiso para editar Ã­tems.'); return; }
+  if (!state.editingItemId && !canCreateItems()){ alert('No tienes permiso para crear Ã­tems.'); return; }
   const aid = getSelectedAircraftId();
   const payload = getForm();
-  if (!payload.description){ alert('La descripción es requerida.'); return; }
+  if (!payload.description){ alert('La descripciÃ³n es requerida.'); return; }
   try {
     if (state.editingItemId){
       await api(`/items/${state.editingItemId}`, { method:'PUT', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
-      alert('Ítem actualizado.');
+      alert('Ãtem actualizado.');
     } else {
       await api(`/aircraft/${aid}/items`, { method:'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
-      alert('Ítem creado.');
+      alert('Ãtem creado.');
     }
     goItems();
     await loadItems();
@@ -856,7 +894,7 @@ async function loadAudit(){
   const url = all ? `/audit${qs}` : `/aircraft/${aid}/audit${qs}`;
   try {
     const items = await api(url);
-    el('auditPageInfo').innerText = `Página ${page}`;
+    el('auditPageInfo').innerText = `PÃ¡gina ${page}`;
     if (!Array.isArray(items) || items.length === 0){
       el('auditList').innerHTML = '<div class="muted small">No hay eventos para este criterio.</div>';
       return;
@@ -887,33 +925,33 @@ function renderAuditItem(ev){
 
   if (tbl === 'aircraft'){
     if (act === 'CREATE'){
-      summary = `✈️ Creado avión "${escapeHtml(det?.values?.name || '')}" (${escapeHtml(det?.values?.model || '')})`;
+      summary = `âœˆï¸ Creado aviÃ³n "${escapeHtml(det?.values?.name || '')}" (${escapeHtml(det?.values?.model || '')})`;
     } else if (act === 'ARCHIVE'){
-      summary = `📦 Archivado avión "${escapeHtml(det?.name || '')}"`;
+      summary = `ðŸ“¦ Archivado aviÃ³n "${escapeHtml(det?.name || '')}"`;
     } else if (act === 'RESTORE'){
-      summary = `♻️ Restaurado avión "${escapeHtml(det?.name || '')}"`;
+      summary = `â™»ï¸ Restaurado aviÃ³n "${escapeHtml(det?.name || '')}"`;
     } else {
-      summary = `✈️ Evento de avión (${act})`;
+      summary = `âœˆï¸ Evento de aviÃ³n (${act})`;
     }
   } else if (tbl === 'maintenance_item'){
     if (act === 'INSERT'){
-      summary = `➕ Ítem creado (id=${rid})`;
+      summary = `âž• Ãtem creado (id=${rid})`;
     } else if (act === 'UPDATE'){
       const fields = det?.diff ? Object.keys(det.diff) : [];
-      summary = `✏️ Ítem actualizado (id=${rid}) — campos: ${fields.join(', ')}`;
+      summary = `âœï¸ Ãtem actualizado (id=${rid}) â€” campos: ${fields.join(', ')}`;
     } else {
-      summary = `Ítem evento (${act}) (id=${rid})`;
+      summary = `Ãtem evento (${act}) (id=${rid})`;
     }
   } else if (tbl === 'import_batch'){
-    summary = `📥 Lote ${rid} — acción: ${act}`;
+    summary = `ðŸ“¥ Lote ${rid} â€” acciÃ³n: ${act}`;
   } else {
-    summary = `${tbl} — ${act}`;
+    summary = `${tbl} â€” ${act}`;
   }
 
   let diffHtml = '';
   if (det && det.diff){
     const rows = Object.entries(det.diff).map(([k,v]) =>
-      `<div class="small"><b>${escapeHtml(k)}</b>: ${escapeHtml(String(v.from))} → ${escapeHtml(String(v.to))}</div>`
+      `<div class="small"><b>${escapeHtml(k)}</b>: ${escapeHtml(String(v.from))} â†’ ${escapeHtml(String(v.to))}</div>`
     ).join('');
     diffHtml = rows ? `<div style="margin-top:6px;">${rows}</div>` : '';
   }
@@ -921,7 +959,7 @@ function renderAuditItem(ev){
   return `
     <div class="item">
       <div>
-        <div class="small muted">${ts}${actor ? ' • por ' + escapeHtml(actor) : ''}</div>
+        <div class="small muted">${ts}${actor ? ' â€¢ por ' + escapeHtml(actor) : ''}</div>
         <div><b>${summary}</b></div>
         ${diffHtml}
       </div>
@@ -941,11 +979,11 @@ async function loadMTRs(){
     list.innerHTML = rows.map(r => `
       <div class="item" onclick="goMTRDetail(${r.id})" style="cursor:pointer;">
         <div>
-          <div><b>MTR #${r.id}</b> · ${escapeHtml(r.aircraft_name || '')} (${escapeHtml(r.aircraft_model || '')})</div>
+          <div><b>MTR #${r.id}</b> Â· ${escapeHtml(r.aircraft_name || '')} (${escapeHtml(r.aircraft_model || '')})</div>
           <div class="small muted">Ciudad: ${escapeHtml(r.work_complete_city || '-')}
-            · Estado: ${escapeHtml(r.status || '-')}
-            · Ítems: ${r.numero_de_items ?? 0}
-            · Fecha: ${escapeHtml(r.date || '-')}
+            Â· Estado: ${escapeHtml(r.status || '-')}
+            Â· Ãtems: ${r.numero_de_items ?? 0}
+            Â· Fecha: ${escapeHtml(r.date || '-')}
           </div>
         </div>
         <div class="pill">${escapeHtml(r.status || '')}</div>
@@ -972,8 +1010,16 @@ async function renderMTRWizard(){
 }
 
 function mtrWizardNav(html){
+  const step = state.mtrWizard?.step || 1;
+  const id = state.mtrWizard?.mtrId || 0;
+  const back = step <= 1 ? `<button onclick=\"goMTRs()\">Atrás</button>`
+    : (step === 2 ? `<button onclick=\"goMTRs()\">Atrás</button>`
+    : `<button onclick=\"location.hash='#/mtrs/${id}/step${step-1}'\">Atrás</button>`);
   return `
-    <div class="small muted" style="margin-bottom:8px;">Paso ${state.mtrWizard?.step || 1} de 6</div>
+    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div>${back}</div>
+      <div class="small muted">Paso ${step} de 6</div>
+    </div>
     ${html}
   `;
 }
@@ -1008,7 +1054,7 @@ async function renderMTRStep1(){
       </div>
       <div class="row" style="gap:12px;">
         <div style="flex:1;">
-          <label>Fecha de finalización</label>
+          <label>Fecha de finalizaciÃ³n</label>
           <input id="w_work_complete_date" type="date" value="${new Date().toISOString().slice(0,10)}" />
         </div>
         <div style="flex:1;">
@@ -1038,7 +1084,7 @@ async function renderMTRStep1(){
           `).join('')}
         </div>
         <label class="small" style="margin-top:6px; display:block;">
-          <input type="checkbox" id="w_update_air_tc" /> Actualizar registro del avión con estos valores
+          <input type="checkbox" id="w_update_air_tc" /> Actualizar registro del aviÃ³n con estos valores
         </label>
       </div>
       <div class="row" style="justify-content:flex-end; gap:8px;">
@@ -1073,9 +1119,9 @@ async function renderMTRStep2(){
   const aid = mtr.mtr.aircraft_id;
   el('mtrWizard').innerHTML = mtrWizardNav(`
     <div class="list">
-      <div class="small muted">Avión #${aid} · Buscar y agregar ítems por código.</div>
+      <div class="small muted">AviÃ³n #${aid} Â· Buscar y agregar Ã­tems por cÃ³digo.</div>
       <div class="row">
-        <input id="w_search_code" placeholder="Buscar por código o descripción" />
+        <input id="w_search_code" placeholder="Buscar por cÃ³digo o descripciÃ³n" />
         <button onclick="mtrSearchItems(${aid})">Buscar</button>
       </div>
       <div id="w_search_results" class="list"></div>
@@ -1093,19 +1139,19 @@ async function mtrSearchItems(aid){
     el('w_search_results').innerHTML = (items||[]).map(r => `
       <div class="item">
         <div>
-          <div><b>${escapeHtml(r.item_code||'')}</b> · ${escapeHtml(r.description||'')}</div>
-          <div class="small muted">${escapeHtml(r.position||'')} · ${escapeHtml(r.type||'')}</div>
+          <div><b>${escapeHtml(r.item_code||'')}</b> Â· ${escapeHtml(r.description||'')}</div>
+          <div class="small muted">${escapeHtml(r.position||'')} Â· ${escapeHtml(r.type||'')}</div>
         </div>
         <button onclick="mtrAddItem(${state.mtrWizard.mtrId}, '${r.item_code?.replaceAll('"','&quot;') || ''}')">Agregar</button>
       </div>
     `).join('');
-  } catch(err){ alert('No se pudo buscar ítems: ' + err.message); }
+  } catch(err){ alert('No se pudo buscar Ã­tems: ' + err.message); }
 }
 
 async function mtrAddItem(mtrId, code){
   try {
     await api(`/mtrs/${mtrId}/items`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ item_code: code }) });
-    alert('Ítem agregado');
+    alert('Ãtem agregado');
   } catch(err){ alert('No se pudo agregar: ' + err.message); }
 }
 
@@ -1115,16 +1161,16 @@ async function renderMTRStep3(){
   const items = data.items||[];
   el('mtrWizard').innerHTML = mtrWizardNav(`
     <div class="list">
-      ${items.length===0?'<div class="muted">Aún no has agregado ítems.</div>':''}
+      ${items.length===0?'<div class="muted">AÃºn no has agregado Ã­tems.</div>':''}
       ${items.map(it=>`
         <div class="item">
-          <div>#${it.id} · <b>${escapeHtml(it.item_code||'')}</b></div>
-          <div style="flex:1; margin-left:8px;"><input id="desc_${it.id}" placeholder="Descripción del ítem" value="${escapeHtml(it.description||'')}"></div>
+          <div>#${it.id} Â· <b>${escapeHtml(it.item_code||'')}</b></div>
+          <div style="flex:1; margin-left:8px;"><input id="desc_${it.id}" placeholder="DescripciÃ³n del Ã­tem" value="${escapeHtml(it.description||'')}"></div>
           <button onclick="mtrRemoveItem(${state.mtrWizard.mtrId}, ${it.id})">Eliminar</button>
         </div>
       `).join('')}
       <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step2'">Atrás</button>
+        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step2'">AtrÃ¡s</button>
         <button onclick="mtrStep3Save()">Guardar y continuar</button>
       </div>
     </div>
@@ -1140,7 +1186,7 @@ async function mtrStep3Save(){
   const items = data.items||[];
   for (const it of items){
     const val = (el(`desc_${it.id}`).value||'').trim();
-    if (!val){ alert('Todos los ítems requieren descripción'); return; }
+    if (!val){ alert('Todos los Ã­tems requieren descripciÃ³n'); return; }
   }
   for (const it of items){
     const val = (el(`desc_${it.id}`).value||'').trim();
@@ -1159,8 +1205,8 @@ async function renderMTRStep4(){
     <div class="list">
       ${(items||[]).map(it=>`<div class=\"item\"><div><b>${escapeHtml(it.item_code||'')}</b></div><div>${escapeHtml(it.description||'')}</div></div>`).join('')}
       <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step3'">Atrás</button>
-        <button onclick="mtrConfirmItems()">Confirmar ítems</button>
+        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step3'">AtrÃ¡s</button>
+        <button onclick="mtrConfirmItems()">Confirmar Ã­tems</button>
       </div>
     </div>
   `);
@@ -1187,11 +1233,11 @@ async function renderMTRStep5(){
       </div>
       <b style="margin-top:10px;">INSPECTION</b>
       <div>
-        <label>Declaración adicional</label>
+        <label>DeclaraciÃ³n adicional</label>
         <input id="rf_additional_certification_statement" value="${val('additional_certification_statement')||'The aircraft identified above is presently approved for return to service.'}" />
       </div>
       <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));">
-        ${[['work_inspected_by','Inspeccionado por'],['inspector_certificate_number','Certificado del inspector'],['inspection_date','Fecha de inspección (YYYY-MM-DD)']].map(([k,l])=>`
+        ${[['work_inspected_by','Inspeccionado por'],['inspector_certificate_number','Certificado del inspector'],['inspection_date','Fecha de inspecciÃ³n (YYYY-MM-DD)']].map(([k,l])=>`
           <div>
             <label>${l}</label>
             <input id="rf_${k}" value="${val(k)}" />
@@ -1199,7 +1245,7 @@ async function renderMTRStep5(){
         `).join('')}
       </div>
       <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step4'">Atrás</button>
+        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step4'">AtrÃ¡s</button>
         <button onclick="mtrStep5Save()">Guardar y continuar</button>
       </div>
     </div>
@@ -1229,12 +1275,15 @@ async function renderMTRStep6(){
   const m = data.mtr, items = data.items||[], tc = data.time_cycles;
   el('mtrWizard').innerHTML = mtrWizardNav(`
     <div class="list">
-      <div class="card"><b>INFO</b><div class="small">Avión #${m.aircraft_id} · Fecha: ${escapeHtml(m.work_complete_date||'')} · Ciudad: ${escapeHtml(m.work_complete_city||'')}</div></div>
+      <div class="card"><b>INFO</b><div class="small">AviÃ³n #${m.aircraft_id} Â· Fecha: ${escapeHtml(m.work_complete_date||'')} Â· Ciudad: ${escapeHtml(m.work_complete_city||'')}</div></div>
       <div class="card"><b>TIME & CYCLES</b><div class="small">AH:${tc?.aircraft_hours??''} AL:${tc?.aircraft_landings??''} APUH:${tc?.apu_hours??''} APUC:${tc?.apu_cycles??''} E1H:${tc?.engine_1_hours??''} E1C:${tc?.engine_1_cycles??''} E2H:${tc?.engine_2_hours??''} E2C:${tc?.engine_2_cycles??''}</div></div>
-      <div class="card"><b>Ítems (${items.length})</b>${items.map(it=>`<div class=\"small\">${escapeHtml(it.item_code||'')} · ${escapeHtml(it.description||'')}</div>`).join('')}</div>
-      <div class="card"><b>REPAIR FACILITY</b><div class="small">${escapeHtml(m.repair_facility||'')} · ${escapeHtml(m.work_performed_by||'')} · ${escapeHtml(m.repair_date||'')}</div></div>
-      <div class="card"><b>INSPECTION</b><div class="small">${escapeHtml(m.work_inspected_by||'')} · ${escapeHtml(m.inspection_date||'')}</div></div>
+      <div class="card"><b>Ãtems (${items.length})</b>${items.map(it=>`<div class=\"small\">${escapeHtml(it.item_code||'')} Â· ${escapeHtml(it.description||'')}</div>`).join('')}</div>
+      <div class="card"><b>REPAIR FACILITY</b><div class="small">${escapeHtml(m.repair_facility||'')} Â· ${escapeHtml(m.work_performed_by||'')} Â· ${escapeHtml(m.repair_date||'')}</div></div>
+      <div class="card"><b>INSPECTION</b><div class="small">${escapeHtml(m.work_inspected_by||'')} Â· ${escapeHtml(m.inspection_date||'')}</div></div>
       <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step5'">Atrás</button>
+        <button onclick="location.hash='#/mtrs/${state.mtrWizard.mtrId}/step2'">Editar</button>
+        <button onclick="deleteMTR(${state.mtrWizard.mtrId})">Eliminar</button>
         <button onclick="goMTRs()">Guardar borrador</button>
         <button onclick="mtrSubmit()">Enviar</button>
       </div>
@@ -1242,11 +1291,18 @@ async function renderMTRStep6(){
   `);
 }
 
+async function deleteMTR(id){
+  if (!confirm('¿Eliminar este MTR (borrador)?')) return;
+  try { await api(`/mtrs/${id}`, { method:'DELETE' }); goMTRs(); await loadMTRs(); } catch(err){ alert('No se pudo eliminar: '+err.message); }
+}
+
+function editMTR(id){ location.hash = `#/mtrs/${id}/step2`; }
+
 async function mtrSubmit(){
   try { const res = await api(`/mtrs/${state.mtrWizard.mtrId}/submit`, { method:'POST' }); alert('MTR enviado'); goMTRs(); } catch(err){ alert('No se pudo enviar: '+err.message); }
 }
 
-// Limpieza de textos con codificación correcta para el historial
+// Limpieza de textos con codificaciÃ³n correcta para el historial
 function renderAuditItem2(ev){
   const ts   = ev.ts;
   const tbl  = ev.table_name;
@@ -1258,33 +1314,33 @@ function renderAuditItem2(ev){
 
   if (tbl === 'aircraft'){
     if (act === 'CREATE'){
-      summary = `✈️ Creado avión "${escapeHtml(det?.values?.name || '')}" (${escapeHtml(det?.values?.model || '')})`;
+      summary = `âœˆï¸ Creado aviÃ³n "${escapeHtml(det?.values?.name || '')}" (${escapeHtml(det?.values?.model || '')})`;
     } else if (act === 'ARCHIVE'){
-      summary = `📦 Archivado avión "${escapeHtml(det?.name || '')}"`;
+      summary = `ðŸ“¦ Archivado aviÃ³n "${escapeHtml(det?.name || '')}"`;
     } else if (act === 'RESTORE'){
-      summary = `♻️ Restaurado avión "${escapeHtml(det?.name || '')}"`;
+      summary = `â™»ï¸ Restaurado aviÃ³n "${escapeHtml(det?.name || '')}"`;
     } else {
-      summary = `✈️ Evento de avión (${act})`;
+      summary = `âœˆï¸ Evento de aviÃ³n (${act})`;
     }
   } else if (tbl === 'maintenance_item'){
     if (act === 'INSERT'){
-      summary = `🧩 Ítem creado (id=${rid})`;
+      summary = `ðŸ§© Ãtem creado (id=${rid})`;
     } else if (act === 'UPDATE'){
       const fields = det?.diff ? Object.keys(det.diff) : [];
-      summary = `🛠️ Ítem actualizado (id=${rid}) — campos: ${fields.join(', ')}`;
+      summary = `ðŸ› ï¸ Ãtem actualizado (id=${rid}) â€” campos: ${fields.join(', ')}`;
     } else {
-      summary = `Evento de ítem (${act}) (id=${rid})`;
+      summary = `Evento de Ã­tem (${act}) (id=${rid})`;
     }
   } else if (tbl === 'import_batch'){
-    summary = `📦 Lote ${rid} — acción: ${act}`;
+    summary = `ðŸ“¦ Lote ${rid} â€” acciÃ³n: ${act}`;
   } else {
-    summary = `${tbl} — ${act}`;
+    summary = `${tbl} â€” ${act}`;
   }
 
   let diffHtml = '';
   if (det && det.diff){
     const rows = Object.entries(det.diff).map(([k,v]) =>
-      `<div class="small"><b>${escapeHtml(k)}</b>: ${escapeHtml(String(v.from))} → ${escapeHtml(String(v.to))}</div>`
+      `<div class="small"><b>${escapeHtml(k)}</b>: ${escapeHtml(String(v.from))} â†’ ${escapeHtml(String(v.to))}</div>`
     ).join('');
     diffHtml = rows ? `<div style="margin-top:6px;">${rows}</div>` : '';
   }
@@ -1292,7 +1348,7 @@ function renderAuditItem2(ev){
   return `
     <div class="item">
       <div>
-        <div class="small muted">${ts}${actor ? ' · por ' + escapeHtml(actor) : ''}</div>
+        <div class="small muted">${ts}${actor ? ' Â· por ' + escapeHtml(actor) : ''}</div>
         <div><b>${summary}</b></div>
         ${diffHtml}
       </div>
@@ -1315,6 +1371,7 @@ function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<',
 </script>
 </body>
 </html>
+
 
 
 
