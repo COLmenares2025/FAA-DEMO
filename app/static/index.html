@@ -721,24 +721,24 @@ async function loadItems(){
     state.items = items;
     state.total = count.count;
   } catch(err){
-    if (err?.message){ alert('No se pudieron cargar los Ã­tems: ' + err.message); }
+    if (err?.message){ alert('No se pudieron cargar los items: ' + err.message); }
     return;
   }
   const totalPages = Math.max(1, Math.ceil(state.total/state.pageSize));
-  el('pageInfo').innerText = Página  de  • Total: ;
+  el("pageInfo").innerText = "Pagina " + state.page + " de " + totalPages + " - Total: " + state.total;
   const list = el('itemsList');
   if (state.items.length === 0){
     list.innerHTML = '<div class="muted">Sin resultados.</div>';
     return;
   }
   list.innerHTML = state.items.map(r => {
-    const editLink = canEditItems() ? `<a class="link" href="#/aircraft/${getSelectedAircraftId()}/items/${r.id}/edit">âœï¸ Editar</a>` : '';
+    const editLink = canEditItems() ? `<a class="link" href="#/aircraft/${getSelectedAircraftId()}/items/${r.id}/edit">Editar</a>` : '';
     return `
       <div class="item">
         <div>
-          <div><b>${escapeHtml(r.description || '(sin descripciÃ³n)')}</b></div>
-          <div class="small muted">${escapeHtml(r.item_code || '')} â€¢ ${escapeHtml(r.position || '')} â€¢ ${escapeHtml(r.type || '')}</div>
-          <div class="small">DueH: ${r.due_next_hours ?? ''} â€¢ DueL: ${r.due_next_landings ?? ''} â€¢ DueD: ${r.due_next_date ?? ''}</div>
+          <div><b>${escapeHtml(r.description || '(sin descripcion)')}</b></div>
+          <div class="small muted">${escapeHtml(r.item_code || '')} | ${escapeHtml(r.position || '')} | ${escapeHtml(r.type || '')}</div>
+          <div class="small">DueH: ${r.due_next_hours ?? ''} | DueL: ${r.due_next_landings ?? ''} | DueD: ${r.due_next_date ?? ''}</div>
           <div class="small muted">#${r.id}</div>
         </div>
         ${editLink}
