@@ -482,6 +482,12 @@ function updateNavLinks(){
   const items = el('navItems');
   const edit  = el('navEdit');
   const audit = el('navAudit');
+  // Asegurar que "Inicio" queda habilitado tras autenticarse
+  const home  = el('navWelcome');
+  if (home){
+    home.classList.remove('disabled');
+    home.href = '#/welcome';
+  }
   if (aid){
     items?.classList.remove('disabled');
     audit?.classList.remove('disabled');
