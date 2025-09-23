@@ -1,35 +1,52 @@
-# Air Audit App (v1 screens)
+# Air Audit App (v1)
 
-Three-screen SPA with FastAPI backend:
-1) Welcome (aircraft cards with search)
-2) Items (published items per aircraft, paginated + search, edit button and "add" button)
-3) Edit/New item (form)
+SPA de tres pantallas con backend FastAPI:
+1) Bienvenida (tarjetas de aviones con búsqueda)
+2) Ítems (publicados por avión, paginación + búsqueda, editar y agregar)
+3) Editar/Nuevo ítem (formulario)
 
-Append-only persistence with SQLite; quarantine for duplicates on CSV import. Manual create/update allowed with ledger audit entries.
+Persistencia append-only en SQLite con bitácora (ledger) y cuarentena para duplicados al importar CSV. Creación/actualización manual permitida con registro de auditoría.
 
 ## Run
 ```bash
-cd air-audit-app-v1
 python -m venv .venv
 # Windows PowerShell: .\.venv\Scripts\Activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
-Open http://127.0.0.1:8000
+Abrir: http://127.0.0.1:8000
 
 ## Autenticación
 
-Al iniciar la aplicación, ingresa con alguno de los usuarios demo:
+Usuarios demo:
 
-| Rol          | Usuario   | Contraseña    |
-|--------------|-----------|---------------|
-| Administrador| `admin`   | `admin123`    |
-| Mecánico     | `mechanic`| `mechanic123` |
-| Auditor      | `auditor` | `auditor123`  |
+| Rol           | Usuario    | Contraseña    |
+|---------------|------------|---------------|
+| Administrador | `admin`    | `admin123`    |
+| Mecánico      | `mechanic` | `mechanic123` |
+| Auditor       | `auditor`  | `auditor123`  |
 
-Los roles tienen los siguientes permisos:
+Permisos:
+- Administrador: acceso total (gestión de aviones, importaciones, creación y edición de ítems).
+- Mecánico: consulta y creación manual de ítems.
+- Auditor: solo lectura (navegación e historial).
 
-- **Administrador:** acceso total (gestión de aviones, importaciones, creación y edición de ítems).
-- **Mecánico:** puede consultar información y crear ítems manuales.
-- **Auditor:** acceso de solo lectura para navegar por la información y el historial.
+## Configuración (variables de entorno)
+
+Opcionales; valores por defecto entre paréntesis:
+
+- `DB_DIR` (`./data`): carpeta para la base SQLite.
+- `DB_FILE` (`air_audit.sqlite`): nombre del archivo SQLite.
+- `SESSION_DURATION_SECONDS` (`28800`): duración de la sesión (segundos).
+- `COOKIE_SECURE` (`false`): si `true`, marca la cookie como Secure.
+- `COOKIE_SAMESITE` (`lax`): `lax` | `strict` | `none` (si `none`, se fuerza `Secure=true`).
+- `COOKIE_DOMAIN` (vacío): dominio explícito para la cookie.
+- `ALLOWED_ORIGINS` (`*`): orígenes permitidos para CORS, CSV. Ej: `http://localhost:3000,https://miapp.com`.
+- `CORS_ALLOW_METHODS` (`*`): métodos CORS (CSV) o `*`.
+- `CORS_ALLOW_HEADERS` (`*`): headers CORS (CSV) o `*`.
+- `CORS_ALLOW_CREDENTIALS` (`true`): habilita credenciales en CORS.
+
+## Notas
+- Cookies httpOnly con soporte de sesión vía header `Authorization: Bearer` o cookie `session`.
+- CORS debe restringirse en producción estableciendo `ALLOWED_ORIGINS`.

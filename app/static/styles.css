@@ -31,7 +31,7 @@ body{
   border-bottom: none;
 }
 #appHeader .brand{font-weight:800;letter-spacing:.3px;font-size:32px;display:flex;align-items:center;gap:12px}
-#appHeader .brand img{height:34px;width:auto;display:block}
+#appHeader .brand img{height:50px;width:auto;display:block}
 nav a{color:white;margin-right:12px;text-decoration:none;padding:6px 10px;border:1px solid rgba(255,255,255,.25);border-radius:8px;opacity:.95}
 nav a.active{background: rgba(255,255,255,.15); opacity:1; font-weight:600}
 nav a.disabled{pointer-events:none; opacity:.5}
